@@ -1,0 +1,2 @@
+# Local guided prototype; Python 3.12+.
+streamlit==1.63.0
