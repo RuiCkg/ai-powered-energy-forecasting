@@ -1,0 +1,2 @@
+# CPU LSTM prototype, tested on Windows Python 3.13.
+torch==2.14.0
