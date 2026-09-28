@@ -8,8 +8,7 @@ from sklearn.preprocessing import StandardScaler
 
 class StackedLSTMNetwork(nn.Module):
     """
-    Stacked LSTM Network for Energy Forecasting.
-    Captures temporal dependencies across sliding window sequences.
+    Stacked LSTM Network for Energy Load and PV Generation Forecasting.
     """
     def __init__(self, input_dim: int, hidden_dim: int = 64, num_layers: int = 2, dropout: float = 0.2):
         super(StackedLSTMNetwork, self).__init__()
@@ -73,6 +72,7 @@ class PyTorchLSTMForecaster:
             epoch_train_loss = running_train_loss / len(train_loader.dataset)
             history["train_loss"].append(epoch_train_loss)
 
+            # Validation Loop - Fix: Accumulate correctly into running_val_loss
             if val_loader:
                 self.model.eval()
                 running_val_loss = 0.0
@@ -80,11 +80,13 @@ class PyTorchLSTMForecaster:
                     for X_v, y_v in val_loader:
                         X_v, y_v = X_v.to(self.device), y_v.to(self.device)
                         preds_v = self.model(X_v)
-                        val_loss += self.criterion(preds_v, y_v).item() * X_v.size(0)
+                        loss_v = self.criterion(preds_v, y_v)
+                        running_val_loss += loss_v.item() * X_v.size(0)
 
                 epoch_val_loss = running_val_loss / len(val_loader.dataset)
                 history["val_loss"].append(epoch_val_loss)
 
+                # Check Early Stopping against validation set loss
                 if epoch_val_loss < best_loss:
                     best_loss = epoch_val_loss
                     patience_counter = 0
