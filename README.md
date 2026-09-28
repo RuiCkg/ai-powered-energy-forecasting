@@ -22,7 +22,7 @@ The pipeline enforces strict chronological splitting—reserving validation sets
 ```text
 ai-powered-energy-forecasting/
 ├── docs/
-│   └── khang_model_handoff.md       # Technical handoff documentation & payload contracts
+│   └── khang_model_handoff.md        # Technical handoff documentation & payload contracts
 ├── models/                           # Serialized model artifacts (git-ignored / auto-generated)
 │   ├── xgb_aemo_nsw1.joblib
 │   ├── xgb_ausgrid_customer1_gg.joblib
