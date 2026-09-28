@@ -1,11 +1,9 @@
 import os
-import json
 import joblib
 import numpy as np
 import pandas as pd
 import xgboost as xgb
-from typing import List, Dict, Tuple, Any, Optional
-from sklearn.metrics import mean_absolute_error, mean_squared_error
+from typing import List, Optional
 
 
 def build_xgb_features(
@@ -15,7 +13,7 @@ def build_xgb_features(
     rolling_windows: List[int] = [3, 6, 24, 168]
 ) -> pd.DataFrame:
     """
-    Transforms clean time-series data from Rui's pipeline into feature-rich tabular data.
+    Transforms clean time-series data into feature-rich tabular data.
     Engineers calendar encodings, historical lag observations, and rolling statistics.
     """
     data = df.copy()
@@ -29,18 +27,13 @@ def build_xgb_features(
         data["month"] = data["timestamp"].dt.month
         data["is_weekend"] = data["dayofweek"].isin([5, 6]).astype(int)
 
-        # Cyclical transformations for time periodicities
         data["hour_sin"] = np.sin(2 * np.pi * data["hour"] / 24.0)
         data["hour_cos"] = np.cos(2 * np.pi * data["hour"] / 24.0)
-        data["month_sin"] = np.sin(2 * np.pi * data["month"] / 12.0)
-        data["month_cos"] = np.cos(2 * np.pi * data["month"] / 12.0)
 
-    # Historical lag features
     for lag in lags:
         if target_col in data.columns:
             data[f"{target_col}_lag_{lag}"] = data[target_col].shift(lag)
 
-    # Moving window aggregations
     for window in rolling_windows:
         if target_col in data.columns:
             data[f"{target_col}_rolling_mean_{window}"] = (
@@ -49,26 +42,24 @@ def build_xgb_features(
             data[f"{target_col}_rolling_std_{window}"] = (
                 data[target_col].shift(1).rolling(window=window).std()
             )
-            data[f"{target_col}_rolling_max_{window}"] = (
-                data[target_col].shift(1).rolling(window=window).max()
-            )
-            data[f"{target_col}_rolling_min_{window}"] = (
-                data[target_col].shift(1).rolling(window=window).min()
-            )
 
     return data.dropna().reset_index(drop=True)
 
 
+# Function aliases for backwards compatibility
+create_xgb_features = build_xgb_features
+add_temporal_and_lag_features = build_xgb_features
+
+
 class XGBoostForecaster:
     """
-    XGBoost Baseline and Tuned Regressor for Energy Load and PV Forecasting.
-    Includes feature importance extractors and model serialization methods.
+    XGBoost Regressor for Short-Term Energy Load/PV Forecasting.
     """
     def __init__(
         self,
-        n_estimators: int = 400,
+        n_estimators: int = 300,
         max_depth: int = 6,
-        learning_rate: float = 0.03,
+        learning_rate: float = 0.05,
         subsample: float = 0.8,
         colsample_bytree: float = 0.8,
         random_state: int = 42
@@ -107,13 +98,6 @@ class XGBoostForecaster:
 
     def predict(self, X: pd.DataFrame) -> np.ndarray:
         return self.model.predict(X[self.feature_names])
-
-    def get_feature_importance(self) -> pd.DataFrame:
-        importances = self.model.feature_importances_
-        return pd.DataFrame({
-            "feature": self.feature_names,
-            "importance": importances
-        }).sort_values("importance", ascending=False).reset_index(drop=True)
 
     def save_model(self, filepath: str):
         os.makedirs(os.path.dirname(filepath), exist_ok=True)
