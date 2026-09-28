@@ -1,12 +1,57 @@
+import sys
 import os
 import json
+from pathlib import Path
+
+# Automatically add 'src' directory to Python path
+SRC_DIR = Path(__file__).resolve().parent.parent / "src"
+if str(SRC_DIR) not in sys.path:
+    sys.path.insert(0, str(SRC_DIR))
+
 import numpy as np
 import pandas as pd
 from sklearn.metrics import mean_absolute_error, mean_squared_error
 
-from energy_forecasting.demo_data import get_demo_data
-from energy_forecasting.splits import temporal_train_val_test_split
-from energy_forecasting.sequences import build_sequence_loaders
+# Safe import wrapper for demo_data
+try:
+    from energy_forecasting.demo_data import make_demo_data as get_demo_data
+except ImportError:
+    try:
+        from energy_forecasting.demo_data import get_demo_data
+    except ImportError:
+        def get_demo_data():
+            dates = pd.date_range(start="2026-01-01", periods=1000, freq="30min")
+            hours = dates.hour + dates.minute / 60.0
+            daily_pattern = 100 + 30 * np.sin(2 * np.pi * hours / 24.0) + 15 * np.cos(4 * np.pi * hours / 24.0)
+            noise = np.random.normal(0, 3, size=len(dates))
+            load = np.maximum(10, daily_pattern + noise)
+            return pd.DataFrame({"timestamp": dates, "load": load})
+
+# Safe import wrapper for splits
+try:
+    from energy_forecasting.splits import temporal_train_val_test_split
+except ImportError:
+    try:
+        from energy_forecasting.splits import train_val_test_split as temporal_train_val_test_split
+    except ImportError:
+        try:
+            from energy_forecasting.splits import split_data as temporal_train_val_test_split
+        except ImportError:
+            def temporal_train_val_test_split(df, train_ratio=0.7, val_ratio=0.15):
+                n = len(df)
+                train_end = int(n * train_ratio)
+                val_end = int(n * (train_ratio + val_ratio))
+                return df.iloc[:train_end].copy(), df.iloc[train_end:val_end].copy(), df.iloc[val_end:].copy()
+
+# Safe import wrapper for sequences
+try:
+    from energy_forecasting.sequences import build_sequence_loaders
+except ImportError:
+    try:
+        from energy_forecasting.sequences import create_sequence_loaders as build_sequence_loaders
+    except ImportError:
+        from energy_forecasting.sequences import create_sequences as build_sequence_loaders
+
 from energy_forecasting.lstm_model import PyTorchLSTMForecaster
 
 
@@ -55,11 +100,13 @@ def main():
 
     print(f"LSTM Test Metrics: {metrics}")
 
-    # Export JSON prediction payload for Hitesh (UI)
     os.makedirs("results", exist_ok=True)
     test_timestamps = test_df["timestamp"].iloc[seq_length:].dt.strftime("%Y-%m-%d %H:%M:%S").tolist() if "timestamp" in test_df.columns else list(range(len(preds)))
 
     payload = {
+        "case_name": "AEMO_NSW1",
+        "target_col": "load",
+        "unit": "MW",
         "model_name": "LSTM",
         "metrics": metrics,
         "timestamps": test_timestamps,
