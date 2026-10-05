@@ -1,123 +1,97 @@
-import os
-import json
-import joblib
-import numpy as np
-import pandas as pd
-import xgboost as xgb
-from typing import List, Dict, Tuple, Any, Optional
-from sklearn.metrics import mean_absolute_error, mean_squared_error
+"""Fixed-configuration XGBoost one-step forecaster with validation-only early stopping and SHAP."""
+
+from __future__ import annotations
+
+from datetime import datetime
+
+from .baseline import evaluate_predictions, preview_predictions
+
+FEATURE_NAMES = ["lag_1", "lag_48", "target_slot", "weekday", "month"]
+
+PARAMS = {
+    "objective": "reg:squarederror",
+    "tree_method": "hist",
+    "max_depth": 4,
+    "learning_rate": 0.05,
+    "subsample": 0.8,
+    "seed": 42,
+    "nthread": 2,
+    "eval_metric": "mae",
+}
+MAX_ROUNDS = 500
+EARLY_STOPPING_ROUNDS = 30
 
 
-def build_xgb_features(
-    df: pd.DataFrame,
-    target_col: str = "load",
-    lags: List[int] = [1, 2, 24, 48, 168],
-    rolling_windows: List[int] = [3, 6, 24, 168]
-) -> pd.DataFrame:
-    """
-    Transforms clean time-series data from Rui's pipeline into feature-rich tabular data.
-    Engineers calendar encodings, historical lag observations, and rolling statistics.
-    """
-    data = df.copy()
+def feature_row(example: dict, case: str) -> list[float]:
+    """Five causal features: previous actual, previous-day actual, known target slot/weekday/month."""
 
-    if "timestamp" in data.columns:
-        data["timestamp"] = pd.to_datetime(data["timestamp"])
-        data = data.sort_values("timestamp").reset_index(drop=True)
-
-        data["hour"] = data["timestamp"].dt.hour
-        data["dayofweek"] = data["timestamp"].dt.dayofweek
-        data["month"] = data["timestamp"].dt.month
-        data["is_weekend"] = data["dayofweek"].isin([5, 6]).astype(int)
-
-        # Cyclical transformations for time periodicities
-        data["hour_sin"] = np.sin(2 * np.pi * data["hour"] / 24.0)
-        data["hour_cos"] = np.cos(2 * np.pi * data["hour"] / 24.0)
-        data["month_sin"] = np.sin(2 * np.pi * data["month"] / 12.0)
-        data["month_cos"] = np.cos(2 * np.pi * data["month"] / 12.0)
-
-    # Historical lag features
-    for lag in lags:
-        if target_col in data.columns:
-            data[f"{target_col}_lag_{lag}"] = data[target_col].shift(lag)
-
-    # Moving window aggregations
-    for window in rolling_windows:
-        if target_col in data.columns:
-            data[f"{target_col}_rolling_mean_{window}"] = (
-                data[target_col].shift(1).rolling(window=window).mean()
-            )
-            data[f"{target_col}_rolling_std_{window}"] = (
-                data[target_col].shift(1).rolling(window=window).std()
-            )
-            data[f"{target_col}_rolling_max_{window}"] = (
-                data[target_col].shift(1).rolling(window=window).max()
-            )
-            data[f"{target_col}_rolling_min_{window}"] = (
-                data[target_col].shift(1).rolling(window=window).min()
-            )
-
-    return data.dropna().reset_index(drop=True)
+    key = example["key"]
+    if case == "aemo":
+        if not isinstance(key, datetime):
+            raise ValueError("AEMO example key must be a timestamp")
+        slot = key.hour * 2 + key.minute // 30
+        day = key.date()
+    elif case == "ausgrid":
+        day, slot = key
+    else:
+        raise ValueError(f"Unknown case: {case}")
+    return [float(example["lag_1"]), float(example["lag_48"]), float(slot), float(day.weekday()), float(day.month)]
 
 
-class XGBoostForecaster:
-    """
-    XGBoost Baseline and Tuned Regressor for Energy Load and PV Forecasting.
-    Includes feature importance extractors and model serialization methods.
-    """
-    def __init__(
-        self,
-        n_estimators: int = 400,
-        max_depth: int = 6,
-        learning_rate: float = 0.03,
-        subsample: float = 0.8,
-        colsample_bytree: float = 0.8,
-        random_state: int = 42
-    ):
-        self.params = {
-            "n_estimators": n_estimators,
-            "max_depth": max_depth,
-            "learning_rate": learning_rate,
-            "subsample": subsample,
-            "colsample_bytree": colsample_bytree,
-            "random_state": random_state,
-            "objective": "reg:squarederror",
-            "n_jobs": -1
-        }
-        self.model = xgb.XGBRegressor(**self.params)
-        self.feature_names: List[str] = []
+def _matrix(examples: list[dict], case: str):
+    import numpy as np
 
-    def fit(
-        self,
-        X_train: pd.DataFrame,
-        y_train: pd.Series,
-        X_val: Optional[pd.DataFrame] = None,
-        y_val: Optional[pd.Series] = None
-    ):
-        self.feature_names = list(X_train.columns)
-        eval_set = [(X_train, y_train)]
-        if X_val is not None and y_val is not None:
-            eval_set.append((X_val, y_val))
+    return (
+        np.array([feature_row(example, case) for example in examples], dtype=float),
+        np.array([example["target"] for example in examples], dtype=float),
+    )
 
-        self.model.fit(
-            X_train,
-            y_train,
-            eval_set=eval_set,
-            verbose=False
-        )
 
-    def predict(self, X: pd.DataFrame) -> np.ndarray:
-        return self.model.predict(X[self.feature_names])
+def fit_and_validate(parts: dict, case: str, include_preview: bool = False) -> dict:
+    """Train on ``train``, pick the tree count on ``validation``; the test part is never touched."""
 
-    def get_feature_importance(self) -> pd.DataFrame:
-        importances = self.model.feature_importances_
-        return pd.DataFrame({
-            "feature": self.feature_names,
-            "importance": importances
-        }).sort_values("importance", ascending=False).reset_index(drop=True)
+    try:
+        import numpy as np
+        import xgboost as xgb
+    except ImportError as error:
+        raise RuntimeError(f"XGBoost dependencies are not installed: {error}") from error
 
-    def save_model(self, filepath: str):
-        os.makedirs(os.path.dirname(filepath), exist_ok=True)
-        joblib.dump(self.model, filepath)
+    x_train, y_train = _matrix(parts["train"], case)
+    x_val, y_val = _matrix(parts["validation"], case)
+    train = xgb.DMatrix(x_train, label=y_train, feature_names=FEATURE_NAMES)
+    validation = xgb.DMatrix(x_val, label=y_val, feature_names=FEATURE_NAMES)
 
-    def load_model(self, filepath: str):
-        self.model = joblib.load(filepath)
+    booster = xgb.train(
+        PARAMS, train, num_boost_round=MAX_ROUNDS,
+        evals=[(validation, "validation")], early_stopping_rounds=EARLY_STOPPING_ROUNDS, verbose_eval=False,
+    )
+    best_iteration = booster.best_iteration
+    iteration_range = (0, best_iteration + 1)
+
+    raw = booster.predict(validation, iteration_range=iteration_range)
+    predictions = [max(0.0, float(value)) for value in raw]
+    metrics = evaluate_predictions(parts["validation"], predictions)
+
+    contributions = booster.predict(validation, iteration_range=iteration_range, pred_contribs=True)
+    mean_abs = np.abs(contributions[:, :-1]).mean(axis=0)
+    first = contributions[0]
+    result = {
+        "model": "XGBoost",
+        "validation_metrics": metrics,
+        "best_iteration": int(best_iteration),
+        "max_rounds": MAX_ROUNDS,
+        "parameters": {**PARAMS, "early_stopping_rounds": EARLY_STOPPING_ROUNDS},
+        "features": FEATURE_NAMES,
+        "validation_mean_absolute_SHAP_by_feature": {
+            name: float(value) for name, value in zip(FEATURE_NAMES, mean_abs)
+        },
+        "validation_first_local_SHAP": {
+            "bias": float(first[-1]),
+            "feature_contributions": {name: float(value) for name, value in zip(FEATURE_NAMES, first[:-1])},
+            "raw_prediction_before_clipping": float(raw[0]),
+        },
+    }
+    result["validation_prediction_rows"] = (
+        preview_predictions(parts["validation"], predictions, limit=len(predictions)) if include_preview else []
+    )
+    return result
