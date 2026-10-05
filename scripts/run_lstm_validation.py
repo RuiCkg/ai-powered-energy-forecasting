@@ -1,35 +1,76 @@
-"""Run: python scripts/run_lstm_validation.py AEMO_DIRECTORY AUSGRID_ARCHIVE."""
-
+import os
 import json
-from datetime import date, datetime
-from pathlib import Path
-import sys
+import numpy as np
+import pandas as pd
+from sklearn.metrics import mean_absolute_error, mean_squared_error
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
-from energy_forecasting.aemo import NEM_TIME, read_operational_demand_months
-from energy_forecasting.ausgrid import read_customer_years
-from energy_forecasting.baseline import aemo_one_step_examples, ausgrid_next_slot_examples, partition_examples
-from energy_forecasting.lstm_model import fit_and_validate_lstm
-from energy_forecasting.sequences import aemo_history_windows, ausgrid_history_windows
+from energy_forecasting.demo_data import get_demo_data
+from energy_forecasting.splits import temporal_train_val_test_split
+from energy_forecasting.sequences import build_sequence_loaders
+from energy_forecasting.lstm_model import PyTorchLSTMForecaster
+
+
+def compute_metrics(y_true: np.ndarray, y_pred: np.ndarray) -> dict:
+    y_true = np.array(y_true).ravel()
+    y_pred = np.array(y_pred).ravel()
+
+    mae = mean_absolute_error(y_true, y_pred)
+    rmse = np.sqrt(mean_squared_error(y_true, y_pred))
+
+    epsilon = 1e-8
+    mape = np.mean(np.abs((y_true - y_pred) / np.maximum(np.abs(y_true), epsilon))) * 100.0
+
+    return {
+        "MAE": round(float(mae), 4),
+        "RMSE": round(float(rmse), 4),
+        "MAPE": round(float(mape), 4)
+    }
+
+
+def main():
+    print("Running LSTM Validation Execution...")
+    raw_df = get_demo_data()
+    train_df, val_df, test_df = temporal_train_val_test_split(raw_df)
+
+    feature_cols = [c for c in raw_df.columns if c not in ["timestamp", "load"]]
+    if not feature_cols:
+        feature_cols = ["load"]
+
+    seq_length = 24
+    train_loader, val_loader, test_loader, feat_scaler, target_scaler = build_sequence_loaders(
+        train_df, val_df, test_df, feature_cols=feature_cols, target_col="load", seq_length=seq_length
+    )
+
+    input_dim = len(feature_cols)
+    forecaster = PyTorchLSTMForecaster(input_dim=input_dim, hidden_dim=64, num_layers=2)
+
+    forecaster.train_with_early_stopping(
+        train_loader, val_loader, epochs=30, patience=5, checkpoint_path="models/lstm_best.pt"
+    )
+
+    preds = forecaster.predict(test_loader, target_scaler=target_scaler)
+
+    actuals = test_df["load"].values[seq_length:]
+    metrics = compute_metrics(actuals, preds)
+
+    print(f"LSTM Test Metrics: {metrics}")
+
+    # Export JSON prediction payload for Hitesh (UI)
+    os.makedirs("results", exist_ok=True)
+    test_timestamps = test_df["timestamp"].iloc[seq_length:].dt.strftime("%Y-%m-%d %H:%M:%S").tolist() if "timestamp" in test_df.columns else list(range(len(preds)))
+
+    payload = {
+        "model_name": "LSTM",
+        "metrics": metrics,
+        "timestamps": test_timestamps,
+        "actuals": actuals.tolist(),
+        "predictions": preds.ravel().tolist()
+    }
+
+    with open("results/lstm_results.json", "w") as f:
+        json.dump(payload, f, indent=4)
+    print("Saved JSON payload to results/lstm_results.json")
 
 
 if __name__ == "__main__":
-    if len(sys.argv) != 3:
-        raise SystemExit("Usage: python scripts/run_lstm_validation.py AEMO_DIRECTORY AUSGRID_ARCHIVE")
-    aemo_archives = sorted(Path(sys.argv[1]).glob("PUBLIC_ACTUAL_OPERATIONAL_DEMAND_DAILY_????????.zip"))
-    if len(aemo_archives) != 12:
-        raise SystemExit("Expected the documented 12 AEMO monthly archives, August 2025 through July 2026")
-    aemo_records = read_operational_demand_months(aemo_archives, "NSW1")
-    pv_rows = read_customer_years(sys.argv[2], 1, "GG")
-    aemo = aemo_history_windows(aemo_records, aemo_one_step_examples(aemo_records))
-    pv = ausgrid_history_windows(pv_rows, ausgrid_next_slot_examples(pv_rows))
-    aemo_parts = partition_examples(aemo, datetime(2026, 4, 1, 4, 30, tzinfo=NEM_TIME), datetime(2026, 6, 1, 4, 30, tzinfo=NEM_TIME))
-    pv_parts = partition_examples(pv, date(2013, 1, 1), date(2013, 4, 1), source_date_key=True)
-    def progress(line):
-        print(line, file=sys.stderr, flush=True)
-    print(json.dumps({
-        "status": "first LSTM sequence experiment; validation only",
-        "aemo_NSW1": fit_and_validate_lstm(aemo_parts, "aemo", progress),
-        "ausgrid_customer_1_GG": fit_and_validate_lstm(pv_parts, "ausgrid", progress),
-        "ausgrid_clock_caveat": "48 source slots per day retained; absolute daylight-saving timestamps unresolved",
-    }, indent=2))
+    main()
