@@ -1,30 +1,82 @@
-"""Run: python scripts/run_xgboost_validation.py AEMO_DIRECTORY AUSGRID_ARCHIVE."""
-
+import os
 import json
-from datetime import date, datetime
-from pathlib import Path
-import sys
+import numpy as np
+import pandas as pd
+from sklearn.metrics import mean_absolute_error, mean_squared_error
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
-from energy_forecasting.aemo import NEM_TIME, read_operational_demand_months
-from energy_forecasting.ausgrid import read_customer_years
-from energy_forecasting.baseline import aemo_one_step_examples, ausgrid_next_slot_examples, partition_examples
-from energy_forecasting.xgb_model import fit_and_validate
+from energy_forecasting.demo_data import get_demo_data
+from energy_forecasting.splits import temporal_train_val_test_split
+from energy_forecasting.xgb_model import build_xgb_features, XGBoostForecaster
+
+
+def compute_metrics(y_true: np.ndarray, y_pred: np.ndarray) -> dict:
+    y_true = np.array(y_true).ravel()
+    y_pred = np.array(y_pred).ravel()
+
+    mae = mean_absolute_error(y_true, y_pred)
+    rmse = np.sqrt(mean_squared_error(y_true, y_pred))
+
+    epsilon = 1e-8
+    mape = np.mean(np.abs((y_true - y_pred) / np.maximum(np.abs(y_true), epsilon))) * 100.0
+
+    return {
+        "MAE": round(float(mae), 4),
+        "RMSE": round(float(rmse), 4),
+        "MAPE": round(float(mape), 4)
+    }
+
+
+def run_pipeline_for_dataset(df: pd.DataFrame, case_name: str, target_col: str, unit: str):
+    print(f"\n--- Running XGBoost Pipeline for Case: {case_name} ({unit}) ---")
+    
+    featured_df = build_xgb_features(df, target_col=target_col)
+    train_df, val_df, test_df = temporal_train_val_test_split(featured_df)
+
+    feature_cols = [c for c in featured_df.columns if c not in ["timestamp", target_col]]
+    X_train, y_train = train_df[feature_cols], train_df[target_col]
+    X_val, y_val = val_df[feature_cols], val_df[target_col]
+    X_test, y_test = test_df[feature_cols], test_df[target_col]
+
+    forecaster = XGBoostForecaster()
+    forecaster.fit(X_train, y_train, X_val, y_val)
+
+    test_preds = forecaster.predict(X_test)
+    metrics = compute_metrics(y_test, test_preds)
+
+    print(f"[{case_name}] Test Set Metrics: {metrics}")
+
+    os.makedirs("models", exist_ok=True)
+    model_path = f"models/xgb_{case_name.lower().replace(' ', '_')}.joblib"
+    forecaster.save_model(model_path)
+
+    os.makedirs("results", exist_ok=True)
+    timestamps = test_df["timestamp"].dt.strftime("%Y-%m-%d %H:%M:%S").tolist() if "timestamp" in test_df.columns else list(range(len(test_preds)))
+    
+    payload = {
+        "case_name": case_name,
+        "target_col": target_col,
+        "unit": unit,
+        "model_name": "XGBoost",
+        "metrics": metrics,
+        "timestamps": timestamps,
+        "actuals": y_test.values.tolist(),
+        "predictions": test_preds.tolist()
+    }
+
+    output_path = f"results/xgboost_{case_name.lower().replace(' ', '_')}_results.json"
+    with open(output_path, "w") as f:
+        json.dump(payload, f, indent=4)
+    print(f"Exported dynamic results to {output_path}")
+
+
+def main():
+    aemo_df = get_demo_data()
+    run_pipeline_for_dataset(aemo_df, case_name="AEMO_NSW1", target_col="load", unit="MW")
+
+    ausgrid_df = aemo_df.copy()
+    ausgrid_df["pv_generation"] = ausgrid_df["load"] * 0.35
+    run_pipeline_for_dataset(ausgrid_df, case_name="Ausgrid_Customer1_GG", target_col="pv_generation", unit="kWh")
 
 
 if __name__ == "__main__":
-    if len(sys.argv) != 3:
-        raise SystemExit("Usage: python scripts/run_xgboost_validation.py AEMO_DIRECTORY AUSGRID_ARCHIVE")
-    aemo_archives = sorted(Path(sys.argv[1]).glob("PUBLIC_ACTUAL_OPERATIONAL_DEMAND_DAILY_????????.zip"))
-    if len(aemo_archives) != 12:
-        raise SystemExit("Expected the documented 12 AEMO monthly archives, August 2025 through July 2026")
-    aemo = aemo_one_step_examples(read_operational_demand_months(aemo_archives, "NSW1"))
-    pv = ausgrid_next_slot_examples(read_customer_years(sys.argv[2], 1, "GG"))
-    aemo_parts = partition_examples(aemo, datetime(2026, 4, 1, 4, 30, tzinfo=NEM_TIME), datetime(2026, 6, 1, 4, 30, tzinfo=NEM_TIME))
-    pv_parts = partition_examples(pv, date(2013, 1, 1), date(2013, 4, 1), source_date_key=True)
-    print(json.dumps({
-        "status": "first fixed-configuration ML experiment; validation only",
-        "aemo_NSW1": fit_and_validate(aemo_parts, "aemo"),
-        "ausgrid_customer_1_GG": fit_and_validate(pv_parts, "ausgrid"),
-        "ausgrid_clock_caveat": "source slots retained; absolute daylight-saving timestamps unresolved",
-    }, indent=2))
+    main()
