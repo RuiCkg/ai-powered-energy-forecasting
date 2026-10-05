@@ -1,120 +1,116 @@
-"""Small CPU LSTM with train-only normalization and validation early stopping."""
-
-from __future__ import annotations
-
-import copy
-from math import sqrt
-
-from .baseline import evaluate_predictions, preview_predictions
-from .xgb_model import feature_row
+import os
+import torch
+import torch.nn as nn
+import numpy as np
+from typing import Dict, Any, Optional
+from sklearn.preprocessing import StandardScaler
 
 
-def fit_and_validate_lstm(parts: dict[str, list[dict]], case: str, progress=None, include_preview: bool = False) -> dict:
-    """Train on source history, select one checkpoint on validation, omit test."""
-
-    try:
-        import torch
-        from torch import nn
-        from torch.utils.data import DataLoader, TensorDataset
-    except ImportError as error:
-        raise RuntimeError("Install requirements-lstm.txt before training the LSTM") from error
-
-    train, validation = parts["train"], parts["validation"]
-    if not train or not validation or not parts["test"]:
-        raise ValueError("Chronological train/validation/test sequence examples are required")
-    if any(len(example.get("history_48", ())) != 48 for example in train + validation):
-        raise ValueError("Every LSTM example needs exactly 48 past source values")
-    torch.manual_seed(42)
-    torch.set_num_threads(2)
-    target_mean = sum(example["target"] for example in train) / len(train)
-    target_std = sqrt(sum((example["target"] - target_mean) ** 2 for example in train) / len(train))
-    if target_std < 1e-9:
-        target_std = 1.0
-
-    def tensors(examples):
-        histories = torch.tensor(
-            [[(value - target_mean) / target_std for value in example["history_48"]] for example in examples],
-            dtype=torch.float32,
+class StackedLSTMNetwork(nn.Module):
+    """
+    Stacked LSTM Network for Energy Load and PV Generation Forecasting.
+    """
+    def __init__(self, input_dim: int, hidden_dim: int = 64, num_layers: int = 2, dropout: float = 0.2):
+        super(StackedLSTMNetwork, self).__init__()
+        self.lstm = nn.LSTM(
+            input_size=input_dim,
+            hidden_size=hidden_dim,
+            num_layers=num_layers,
+            batch_first=True,
+            dropout=dropout if num_layers > 1 else 0.0
         )
-        calendars = torch.tensor(
-            [[feature_row(example, case)[2] / 48, feature_row(example, case)[3] / 6,
-              feature_row(example, case)[4] / 12] for example in examples],
-            dtype=torch.float32,
-        )
-        targets = torch.tensor([(example["target"] - target_mean) / target_std for example in examples], dtype=torch.float32)
-        return TensorDataset(histories, calendars, targets)
+        self.fc_1 = nn.Linear(hidden_dim, 32)
+        self.relu = nn.ReLU()
+        self.fc_out = nn.Linear(32, 1)
 
-    train_loader = DataLoader(tensors(train), batch_size=512, shuffle=True, generator=torch.Generator().manual_seed(42), num_workers=0)
-    validation_loader = DataLoader(tensors(validation), batch_size=1024, shuffle=False, num_workers=0)
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        lstm_out, _ = self.lstm(x)
+        last_step = lstm_out[:, -1, :]
+        out = self.relu(self.fc_1(last_step))
+        return self.fc_out(out)
 
-    class TinyLSTM(nn.Module):
-        def __init__(self):
-            super().__init__()
-            self.recurrent = nn.LSTM(input_size=1, hidden_size=16, batch_first=True)
-            self.head = nn.Linear(19, 1)
 
-        def forward(self, history, calendar):
-            _, (hidden, _) = self.recurrent(history.unsqueeze(-1))
-            return self.head(torch.cat((hidden[-1], calendar), dim=1)).squeeze(-1)
+class PyTorchLSTMForecaster:
+    """
+    LSTM Execution Manager: Controls GPU/CPU hardware acceleration, Early Stopping,
+    model serialization, and inverse prediction scaling.
+    """
+    def __init__(self, input_dim: int, hidden_dim: int = 64, num_layers: int = 2, lr: float = 0.001):
+        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        self.model = StackedLSTMNetwork(input_dim, hidden_dim, num_layers).to(self.device)
+        self.criterion = nn.MSELoss()
+        self.optimizer = torch.optim.Adam(self.model.parameters(), lr=lr)
 
-    model = TinyLSTM()
-    optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
+    def train_with_early_stopping(
+        self,
+        train_loader,
+        val_loader=None,
+        epochs: int = 50,
+        patience: int = 8,
+        checkpoint_path: str = "models/lstm_best.pt"
+    ) -> Dict[str, list]:
+        best_loss = float("inf")
+        patience_counter = 0
+        history = {"train_loss": [], "val_loss": []}
 
-    def predict_validation():
-        model.eval()
-        predictions = []
+        os.makedirs(os.path.dirname(checkpoint_path), exist_ok=True)
+
+        for epoch in range(epochs):
+            self.model.train()
+            running_train_loss = 0.0
+            for X_b, y_b in train_loader:
+                X_b, y_b = X_b.to(self.device), y_b.to(self.device)
+
+                self.optimizer.zero_grad()
+                preds = self.model(X_b)
+                loss = self.criterion(preds, y_b)
+                loss.backward()
+                self.optimizer.step()
+
+                running_train_loss += loss.item() * X_b.size(0)
+
+            epoch_train_loss = running_train_loss / len(train_loader.dataset)
+            history["train_loss"].append(epoch_train_loss)
+
+            # Validation Loop - Fix: Accumulate correctly into running_val_loss
+            if val_loader:
+                self.model.eval()
+                running_val_loss = 0.0
+                with torch.no_grad():
+                    for X_v, y_v in val_loader:
+                        X_v, y_v = X_v.to(self.device), y_v.to(self.device)
+                        preds_v = self.model(X_v)
+                        loss_v = self.criterion(preds_v, y_v)
+                        running_val_loss += loss_v.item() * X_v.size(0)
+
+                epoch_val_loss = running_val_loss / len(val_loader.dataset)
+                history["val_loss"].append(epoch_val_loss)
+
+                # Check Early Stopping against validation set loss
+                if epoch_val_loss < best_loss:
+                    best_loss = epoch_val_loss
+                    patience_counter = 0
+                    torch.save(self.model.state_dict(), checkpoint_path)
+                else:
+                    patience_counter += 1
+                    if patience_counter >= patience:
+                        break
+
+        if os.path.exists(checkpoint_path):
+            self.model.load_state_dict(torch.load(checkpoint_path, map_location=self.device))
+
+        return history
+
+    def predict(self, data_loader, target_scaler: Optional[StandardScaler] = None) -> np.ndarray:
+        self.model.eval()
+        preds = []
         with torch.no_grad():
-            for histories, calendars, _ in validation_loader:
-                outputs = model(histories, calendars).tolist()
-                predictions.extend(max(0.0, float(output) * target_std + target_mean) for output in outputs)
-        return predictions
+            for X_b, _ in data_loader:
+                X_b = X_b.to(self.device)
+                out = self.model(X_b)
+                preds.append(out.cpu().numpy())
 
-    best_mae = float("inf")
-    best_epoch = 0
-    best_state = None
-    non_improving = 0
-    epochs_run = 0
-    for epoch in range(1, 21):
-        model.train()
-        for histories, calendars, targets in train_loader:
-            optimizer.zero_grad()
-            loss = nn.functional.mse_loss(model(histories, calendars), targets)
-            loss.backward()
-            nn.utils.clip_grad_norm_(model.parameters(), 1.0)
-            optimizer.step()
-        predictions = predict_validation()
-        validation_mae = evaluate_predictions(validation, predictions)["MAE"]
-        epochs_run = epoch
-        if progress is not None:
-            progress(f"{case} epoch {epoch}: validation MAE {validation_mae:.5f}")
-        if validation_mae + 1e-6 < best_mae:
-            best_mae = validation_mae
-            best_epoch = epoch
-            best_state = copy.deepcopy(model.state_dict())
-            non_improving = 0
-        else:
-            non_improving += 1
-            if non_improving >= 3:
-                break
-    model.load_state_dict(best_state)
-    validation_predictions = predict_validation()
-    result = {
-        "model": "one-layer CPU LSTM, 48 prior source values and known calendar",
-        "torch_version": torch.__version__,
-        "hidden_size": 16,
-        "optimizer": "Adam, learning rate 0.001",
-        "max_epochs": 20,
-        "early_stop_patience_epochs": 3,
-        "epochs_run": epochs_run,
-        "best_epoch_selected_on_validation": best_epoch,
-        "train_only_target_mean": target_mean,
-        "train_only_target_std": target_std,
-        "nonnegative_predictions": True,
-        "validation_metrics": evaluate_predictions(validation, validation_predictions),
-        "validation_seasonal_naive_metrics": evaluate_predictions(validation, [example["lag_48"] for example in validation]),
-        "validation_persistence_metrics": evaluate_predictions(validation, [example["lag_1"] for example in validation]),
-        "test_status": "reserved; not used for fitting, normalization, checkpoint selection or scoring",
-    }
-    if include_preview:
-        result["validation_prediction_rows"] = preview_predictions(validation, validation_predictions, len(validation))
-    return result
+        unscaled = np.vstack(preds)
+        if target_scaler:
+            unscaled = target_scaler.inverse_transform(unscaled)
+        return unscaled
