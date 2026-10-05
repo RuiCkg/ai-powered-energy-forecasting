@@ -1,76 +1,32 @@
-import os
+"""Run: python scripts/run_lstm_validation.py AEMO_DIRECTORY AUSGRID_ARCHIVE."""
+
 import json
-import numpy as np
-import pandas as pd
-from sklearn.metrics import mean_absolute_error, mean_squared_error
+from pathlib import Path
+import sys
 
-from energy_forecasting.demo_data import get_demo_data
-from energy_forecasting.splits import temporal_train_val_test_split
-from energy_forecasting.sequences import build_sequence_loaders
-from energy_forecasting.lstm_model import PyTorchLSTMForecaster
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
+from energy_forecasting.demo_data import prepare_uploaded_sources
+from energy_forecasting.lstm_model import fit_and_validate_lstm
 
 
-def compute_metrics(y_true: np.ndarray, y_pred: np.ndarray) -> dict:
-    y_true = np.array(y_true).ravel()
-    y_pred = np.array(y_pred).ravel()
+class DiskFile:
+    """Minimal stand-in for a Streamlit upload."""
 
-    mae = mean_absolute_error(y_true, y_pred)
-    rmse = np.sqrt(mean_squared_error(y_true, y_pred))
+    def __init__(self, path: Path):
+        self.name, self._path = path.name, path
 
-    epsilon = 1e-8
-    mape = np.mean(np.abs((y_true - y_pred) / np.maximum(np.abs(y_true), epsilon))) * 100.0
-
-    return {
-        "MAE": round(float(mae), 4),
-        "RMSE": round(float(rmse), 4),
-        "MAPE": round(float(mape), 4)
-    }
-
-
-def main():
-    print("Running LSTM Validation Execution...")
-    raw_df = get_demo_data()
-    train_df, val_df, test_df = temporal_train_val_test_split(raw_df)
-
-    feature_cols = [c for c in raw_df.columns if c not in ["timestamp", "load"]]
-    if not feature_cols:
-        feature_cols = ["load"]
-
-    seq_length = 24
-    train_loader, val_loader, test_loader, feat_scaler, target_scaler = build_sequence_loaders(
-        train_df, val_df, test_df, feature_cols=feature_cols, target_col="load", seq_length=seq_length
-    )
-
-    input_dim = len(feature_cols)
-    forecaster = PyTorchLSTMForecaster(input_dim=input_dim, hidden_dim=64, num_layers=2)
-
-    forecaster.train_with_early_stopping(
-        train_loader, val_loader, epochs=30, patience=5, checkpoint_path="models/lstm_best.pt"
-    )
-
-    preds = forecaster.predict(test_loader, target_scaler=target_scaler)
-
-    actuals = test_df["load"].values[seq_length:]
-    metrics = compute_metrics(actuals, preds)
-
-    print(f"LSTM Test Metrics: {metrics}")
-
-    # Export JSON prediction payload for Hitesh (UI)
-    os.makedirs("results", exist_ok=True)
-    test_timestamps = test_df["timestamp"].iloc[seq_length:].dt.strftime("%Y-%m-%d %H:%M:%S").tolist() if "timestamp" in test_df.columns else list(range(len(preds)))
-
-    payload = {
-        "model_name": "LSTM",
-        "metrics": metrics,
-        "timestamps": test_timestamps,
-        "actuals": actuals.tolist(),
-        "predictions": preds.ravel().tolist()
-    }
-
-    with open("results/lstm_results.json", "w") as f:
-        json.dump(payload, f, indent=4)
-    print("Saved JSON payload to results/lstm_results.json")
+    def getvalue(self) -> bytes:
+        return self._path.read_bytes()
 
 
 if __name__ == "__main__":
-    main()
+    if len(sys.argv) != 3:
+        raise SystemExit("Usage: python scripts/run_lstm_validation.py AEMO_DIRECTORY AUSGRID_ARCHIVE")
+    aemo = [DiskFile(p) for p in sorted(Path(sys.argv[1]).glob("PUBLIC_ACTUAL_OPERATIONAL_DEMAND_DAILY_????????.zip"))]
+    prepared = prepare_uploaded_sources(aemo, DiskFile(Path(sys.argv[2])))
+    output = {"scope": "validation only; test partition not scored"}
+    for case in ("aemo", "ausgrid"):
+        result = fit_and_validate_lstm(prepared[case]["parts"], case)
+        result.pop("validation_prediction_rows")
+        output[case] = result
+    print(json.dumps(output, indent=2))
