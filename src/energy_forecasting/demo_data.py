@@ -45,6 +45,12 @@ def prepare_uploaded_sources(aemo_files, ausgrid_file):
     return {
         "aemo": {
             "profile": aemo_profile,
+
+"boundaries": {
+    "validation_start": datetime(2026, 4, 1, 4, 30, tzinfo=NEM_TIME),
+    "test_start": datetime(2026, 6, 1, 4, 30, tzinfo=NEM_TIME),
+},
+
             "parts": partition_examples(
                 aemo_examples,
                 datetime(2026, 4, 1, 4, 30, tzinfo=NEM_TIME),
@@ -53,6 +59,12 @@ def prepare_uploaded_sources(aemo_files, ausgrid_file):
         },
         "ausgrid": {
             "profile": ausgrid_profile,
+
+"boundaries": {
+    "validation_start": datetime(2026, 4, 1, 4, 30, tzinfo=NEM_TIME),
+    "test_start": datetime(2026, 6, 1, 4, 30, tzinfo=NEM_TIME),
+},
+
             "parts": partition_examples(
                 ausgrid_examples, date(2013, 1, 1), date(2013, 4, 1), source_date_key=True
             ),
