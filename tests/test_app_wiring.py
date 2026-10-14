@@ -46,8 +46,13 @@ class AppWiringTest(unittest.TestCase):
 
     def test_the_user_journey_has_progress_and_result_sections(self):
         self.assertIn("st.progress(", APP_SOURCE)
-        for label in ("Overview", "Forecasts", "Explainability", "Downloads"):
+        for label in ("Overview", "Forecasts", "Explainability (XGBoost)", "Downloads"):
             self.assertIn(f'"{label}"', APP_SOURCE)
+
+    def test_model_specific_results_are_not_presented_as_last_run_results(self):
+        self.assertIn('first.metric("Best model by MAE"', APP_SOURCE)
+        self.assertIn("not the model that was run most recently", APP_SOURCE)
+        self.assertIn("This tab explains the XGBoost model only", APP_SOURCE)
 
     def test_the_forecast_chart_does_not_rely_on_colour_alone(self):
         self.assertIn("strokeDash=alt.StrokeDash", APP_SOURCE)

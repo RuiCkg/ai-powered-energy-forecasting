@@ -167,6 +167,11 @@ def show_explainability(case: str, result: dict) -> None:
         f"{name} ({value:.3f})" for name, value in global_shap.head(3).items()
     )
     st.subheader("XGBoost feature contributions (SHAP)")
+    st.info(
+        "This tab explains the XGBoost model only. LSTM metrics and forecasts "
+        "remain available in Overview and Forecasts; a separate deep-learning "
+        "attribution method is outside the current prototype scope."
+    )
     st.write(
         "The three strongest average model associations are "
         f"{feature_summary}. SHAP explains the fitted model; it does not prove "
@@ -199,10 +204,14 @@ def model_summary_cards(case: str, comparison: pd.DataFrame, results: dict) -> N
     improvement = 100 * (1 - best_row["MAE"] / persistence_mae)
     decimals = 2 if case == "aemo" else 4
     first, second, third, fourth = st.columns(4)
-    first.metric("Best validation MAE", best_row["Approach"])
+    first.metric("Best model by MAE", best_row["Approach"])
     second.metric("MAE", f"{best_row['MAE']:.{decimals}f} {UNITS[case]}")
     third.metric("vs persistence", f"{improvement:.1f}% lower")
     fourth.metric("Validation targets", f"{int(best_row['Validation targets']):,}")
+    st.caption(
+        "These cards show the completed trained model with the lowest validation "
+        "MAE, not the model that was run most recently."
+    )
 
 
 st.set_page_config(page_title="Energy forecasting validation demo", layout="wide")
@@ -358,7 +367,7 @@ if "prepared" in st.session_state:
 
     st.subheader("4. Review and export results")
     overview_tab, forecast_tab, explain_tab, downloads_tab = st.tabs([
-        "Overview", "Forecasts", "Explainability", "Downloads"
+        "Overview", "Forecasts", "Explainability (XGBoost)", "Downloads"
     ])
     with overview_tab:
         model_summary_cards(case, comparison, results)

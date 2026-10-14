@@ -18,7 +18,7 @@ Do not train a model live during the presentation. The real-data workflow takes 
 | --- | --- | --- |
 | 0:00–0:25 | Show the accepted source profile and split counts | “The platform validates the documented archives and uses chronological train, validation and reserved test partitions.” |
 | 0:25–1:05 | Select AEMO and open **Overview** | “XGBoost achieved MAE 90.37 MW, improving on persistence at 188.01 MW and seasonal naive at 393.42 MW.” |
-| 1:05–1:35 | Open **Forecasts**, then **Explainability** | “The previous observed slot dominates the model, while SHAP additivity is checked before prediction clipping. These are model associations, not causal effects.” |
+| 1:05–1:35 | Open **Forecasts**, then **Explainability (XGBoost)** | “The previous observed slot dominates the XGBoost model, while SHAP additivity is checked before prediction clipping. These are model associations, not causal effects; the prototype does not provide LSTM attribution.” |
 | 1:35–2:15 | Switch to Ausgrid and return to **Overview** | “XGBoost has the lowest MAE at 0.0676 kWh per source slot. LSTM has a slightly lower RMSE, so model choice depends on the selected success metric.” |
 | 2:15–2:35 | Point to the zero-exclusion count | “PV MAPE excludes 2,029 zero-generation targets, so MAE and RMSE are the primary PV measures.” |
 | 2:35–3:00 | Open **Downloads** | “The user can export predictions, aggregate results and an environment/configuration record for replay.” |
