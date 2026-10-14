@@ -3,7 +3,7 @@
 Author: Nguyen Hoang Viet (Explainability & QA Lead)
 
 Verifies:
-- NFR2: training < 60 seconds for 10,000 records per model
+- NFR2: XGBoost training < 60 seconds for 10,000 synthetic records
 - SHAP generation < 120 seconds
 - Reproducibility with fixed seed
 """
@@ -69,11 +69,17 @@ class NFRVerificationTest(unittest.TestCase):
         X = rng.normal(size=(n, 3)).astype(np.float32)
         y = X[:, 0] + rng.normal(scale=0.1, size=n)
         dmatrix = xgb.DMatrix(X, label=y, feature_names=["a", "b", "c"])
-        params = {"objective": "reg:squarederror", "max_depth": 3, "seed": 42}
-        booster = xgb.train(params, dmatrix, num_boost_round=20)
+        params = {
+            "objective": "reg:squarederror",
+            "max_depth": 3,
+            "seed": 42,
+            "nthread": 1,
+        }
+        first_booster = xgb.train(params, dmatrix, num_boost_round=20)
+        second_booster = xgb.train(params, dmatrix, num_boost_round=20)
 
-        first = compute_shap_contributions(booster, dmatrix)
-        second = compute_shap_contributions(booster, dmatrix)
+        first = compute_shap_contributions(first_booster, dmatrix)
+        second = compute_shap_contributions(second_booster, dmatrix)
         pd.testing.assert_frame_equal(first, second)
 
 

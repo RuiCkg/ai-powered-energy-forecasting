@@ -8,23 +8,29 @@ forecasting model using XGBoost's native pred_contribs (exact for trees).
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
-import numpy as np
-import pandas as pd
-import xgboost as xgb
+if TYPE_CHECKING:
+    import pandas as pd
+    import xgboost as xgb
 
 
 def compute_shap_contributions(
-    booster: xgb.Booster,
-    dmatrix: xgb.DMatrix,
-) -> pd.DataFrame:
+    booster: "xgb.Booster",
+    dmatrix: "xgb.DMatrix",
+    iteration_range: tuple[int, int] | None = None,
+) -> "pd.DataFrame":
     """Return per-feature SHAP contributions for XGBoost predictions.
 
     Uses XGBoost's native pred_contribs, which is exact for tree models.
     The final column is the bias term (base value).
     """
-    contributions = booster.predict(dmatrix, pred_contribs=True)
+    import pandas as pd
+
+    predict_options = {"pred_contribs": True}
+    if iteration_range is not None:
+        predict_options["iteration_range"] = iteration_range
+    contributions = booster.predict(dmatrix, **predict_options)
     feature_names = list(booster.feature_names or []) + ["bias"]
     if contributions.shape[1] != len(feature_names):
         raise ValueError(
@@ -34,7 +40,7 @@ def compute_shap_contributions(
     return pd.DataFrame(contributions, columns=feature_names)
 
 
-def global_feature_importance(contributions: pd.DataFrame) -> pd.Series:
+def global_feature_importance(contributions: "pd.DataFrame") -> "pd.Series":
     """Mean absolute SHAP value per feature, excluding the bias term.
 
     Higher values indicate features that influence predictions more
@@ -47,12 +53,12 @@ def global_feature_importance(contributions: pd.DataFrame) -> pd.Series:
     return features.abs().mean().sort_values(ascending=False)
 
 
-def top_features(contributions: pd.DataFrame, n: int = 5) -> list[str]:
+def top_features(contributions: "pd.DataFrame", n: int = 5) -> list[str]:
     """Return the top-n feature names by mean absolute SHAP value."""
     return global_feature_importance(contributions).head(n).index.tolist()
 
 
-def local_explanation(contributions: pd.DataFrame, row: int = 0) -> dict[str, Any]:
+def local_explanation(contributions: "pd.DataFrame", row: int = 0) -> dict[str, Any]:
     """Return one row's feature contributions plus the bias (base value).
 
     These are associations from the fitted model, not causal effects.
@@ -68,7 +74,7 @@ def local_explanation(contributions: pd.DataFrame, row: int = 0) -> dict[str, An
 
 
 def export_global_importance(
-    contributions: pd.DataFrame,
+    contributions: "pd.DataFrame",
     output_path: str | Path,
 ) -> None:
     """Save global feature importance to CSV for reporting."""

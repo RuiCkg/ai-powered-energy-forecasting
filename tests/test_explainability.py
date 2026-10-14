@@ -49,6 +49,12 @@ class ExplainabilityTest(unittest.TestCase):
         summed = contributions.sum(axis=1).to_numpy()
         np.testing.assert_allclose(summed, raw_pred, atol=1e-4)
 
+    def test_shap_uses_the_requested_iteration_range(self):
+        booster, dmatrix = _small_booster()
+        contributions = compute_shap_contributions(booster, dmatrix, iteration_range=(0, 10))
+        raw_pred = booster.predict(dmatrix, iteration_range=(0, 10), output_margin=True)
+        np.testing.assert_allclose(contributions.sum(axis=1).to_numpy(), raw_pred, atol=1e-4)
+
     def test_global_importance_is_sorted_descending(self):
         booster, dmatrix = _small_booster()
         contributions = compute_shap_contributions(booster, dmatrix)
