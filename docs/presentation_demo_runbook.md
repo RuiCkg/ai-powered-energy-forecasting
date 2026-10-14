@@ -5,7 +5,7 @@
 1. Use the repository `.venv`, not the system Python installation.
 2. Start the app with `python -m streamlit run streamlit_app.py`.
 3. Upload the 12 documented AEMO monthly ZIPs and `Ausgrid_solar_home_data.zip`.
-4. Select **Read sources and prepare validation**.
+4. Select **Validate files and prepare forecasting cases**.
 5. Run XGBoost and LSTM for AEMO, then repeat for Ausgrid.
 6. Keep the app and computer awake. Reloading the page may clear the prepared session.
 7. Keep [`streamlit_real_data_smoke_2026-10-14.json`](streamlit_real_data_smoke_2026-10-14.json), screenshots and the slide PDF available as fallbacks.
@@ -17,11 +17,11 @@ Do not train a model live during the presentation. The real-data workflow takes 
 | Time | Action | What to say |
 | --- | --- | --- |
 | 0:00–0:25 | Show the accepted source profile and split counts | “The platform validates the documented archives and uses chronological train, validation and reserved test partitions.” |
-| 0:25–1:05 | Select AEMO and show the comparison table | “XGBoost achieved MAE 90.37 MW, improving on persistence at 188.01 MW and seasonal naive at 393.42 MW.” |
-| 1:05–1:35 | Show actual-versus-predicted output and SHAP | “The previous observed slot dominates the model, while SHAP additivity is checked before prediction clipping. These are model associations, not causal effects.” |
-| 1:35–2:15 | Switch to Ausgrid and show the comparison | “XGBoost has the lowest MAE at 0.0676 kWh per source slot. LSTM has a slightly lower RMSE, so model choice depends on the selected success metric.” |
+| 0:25–1:05 | Select AEMO and open **Overview** | “XGBoost achieved MAE 90.37 MW, improving on persistence at 188.01 MW and seasonal naive at 393.42 MW.” |
+| 1:05–1:35 | Open **Forecasts**, then **Explainability** | “The previous observed slot dominates the model, while SHAP additivity is checked before prediction clipping. These are model associations, not causal effects.” |
+| 1:35–2:15 | Switch to Ausgrid and return to **Overview** | “XGBoost has the lowest MAE at 0.0676 kWh per source slot. LSTM has a slightly lower RMSE, so model choice depends on the selected success metric.” |
 | 2:15–2:35 | Point to the zero-exclusion count | “PV MAPE excludes 2,029 zero-generation targets, so MAE and RMSE are the primary PV measures.” |
-| 2:35–3:00 | Show the forecast and reproducibility downloads | “The user can export predictions, aggregate results and an environment/configuration record for replay.” |
+| 2:35–3:00 | Open **Downloads** | “The user can export predictions, aggregate results and an environment/configuration record for replay.” |
 
 ## Recovery plan
 

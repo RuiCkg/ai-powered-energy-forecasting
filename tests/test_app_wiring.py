@@ -44,6 +44,20 @@ class AppWiringTest(unittest.TestCase):
         self.assertIn('type="zip"', APP_SOURCE)
         self.assertIn("validate_documented_sources", APP_SOURCE)
 
+    def test_the_user_journey_has_progress_and_result_sections(self):
+        self.assertIn("st.progress(", APP_SOURCE)
+        for label in ("Overview", "Forecasts", "Explainability", "Downloads"):
+            self.assertIn(f'"{label}"', APP_SOURCE)
+
+    def test_the_forecast_chart_does_not_rely_on_colour_alone(self):
+        self.assertIn("strokeDash=alt.StrokeDash", APP_SOURCE)
+        self.assertIn("actual (solid) and predicted (dashed)", APP_SOURCE)
+
+    def test_the_visible_tables_are_readable_and_use_current_width_api(self):
+        self.assertIn('.round(metric_decimals)', APP_SOURCE)
+        self.assertIn('width="stretch"', APP_SOURCE)
+        self.assertNotIn("use_container_width", APP_SOURCE)
+
 
 if __name__ == "__main__":
     unittest.main()
