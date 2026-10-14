@@ -6,10 +6,10 @@ The one-layer CPU LSTM has 16 hidden units, an Adam optimizer at learning rate 0
 
 | Case | Validation targets | Seasonal-naive MAE | Persistence MAE | XGBoost MAE | LSTM MAE | LSTM RMSE | Best LSTM epoch |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| AEMO `NSW1`, MW | 2,928 | 393.42 | 188.01 | 90.45 | 164.51 | 202.09 | 20 |
-| Ausgrid customer `1` `GG`, kWh/source slot | 4,230 | 0.1567 | 0.0850 | 0.0680 | 0.0688 | 0.1394 | 18 |
+| AEMO `NSW1`, MW | 2,928 | 393.42 | 188.01 | 90.37 | 164.51 | 202.09 | 20 |
+| Ausgrid customer `1` `GG`, kWh/source slot | 4,230 | 0.1567 | 0.0850 | 0.0676 | 0.0688 | 0.1394 | 18 |
 
-On these validation periods the LSTM beats both simple references. XGBoost has lower MAE and RMSE for AEMO and lower MAE for Ausgrid; the Ausgrid LSTM has a slightly lower RMSE (0.1394 versus 0.1408). The AEMO LSTM still improved at epoch 20, so this is a **bounded run**, not an optimized sequence model. Positive-actual MAPE was 2.32% for demand and 48.05% for PV, with 2,029 zero PV actuals excluded. MAE and RMSE include all valid targets. This says nothing yet about the reserved test periods, longer forecast horizons, or real-time data latency.
+On these validation periods the LSTM beats both simple references. XGBoost has lower MAE and RMSE for AEMO and lower MAE for Ausgrid; the Ausgrid LSTM has a slightly lower RMSE (0.1394 versus 0.1406). The AEMO LSTM still improved at epoch 20, so this is a **bounded run**, not an optimized sequence model. Positive-actual MAPE was 2.32% for demand and 48.05% for PV, with 2,029 zero PV actuals excluded. MAE and RMSE include all valid targets. This says nothing yet about the reserved test periods, longer forecast horizons, or real-time data latency.
 
 These figures were reproduced on 14 October 2026 using Python 3.13.5 and PyTorch 2.14.0+cpu from the repository `.venv`. The machine-readable evidence is in [`validation_results_2026-10-14.json`](validation_results_2026-10-14.json).
 

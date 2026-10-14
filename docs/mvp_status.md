@@ -6,7 +6,7 @@
 - Built causal one-step source examples, 48-value LSTM histories, and provisional chronological train/validation/test partitions. The test targets were **not** used in model fitting, early stopping, checkpoint selection or reported ML/DL scores.
 - Computed previous-day seasonal-naive and previous-slot persistence references; trained one XGBoost and one small LSTM per case; reported validation MAE/RMSE and positive-actual MAPE with zero exclusions.
 - Added XGBoost's native SHAP contributions on validation rows, plus a local Streamlit dashboard for source review, case-by-case comparison, actual-versus-predicted plots, and downloadable validation CSV/JSON.
-- Passed 70 automated tests plus 52 upload-validation subtests, covering parsers, splits, input contracts, features, models, SHAP additivity, security and reproducibility. Reopened both real source types through in-memory ZIPs and confirmed the local dashboard starts and responds to a health check.
+- Passed 71 automated tests plus 52 upload-validation subtests, covering parsers, splits, input contracts, features, models, SHAP additivity, security and reproducibility. Reopened both real source types through in-memory ZIPs and confirmed the local dashboard starts and responds to a health check.
 - Recorded copy-specific hashes and AEMO low/abrupt-change review flags in the [data manifest](data_manifest.md), plus Rui's [integration handoff](rui_data_handoff.md). No anomalous reading was silently removed.
 
 ## Not yet settled or delivered

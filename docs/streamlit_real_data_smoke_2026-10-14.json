@@ -1,0 +1,26 @@
+{
+  "date": "2026-10-14",
+  "workflow": "Streamlit official AppTest with documented real-data archives",
+  "environment": "project .venv",
+  "sources_prepared": true,
+  "ui_checks": {
+    "case_selection": true,
+    "comparison_table": true,
+    "actual_vs_predicted_output": true,
+    "shap_output": true,
+    "xgboost_forecast_csv_download": true,
+    "lstm_forecast_csv_download": true,
+    "validation_summary_json_download": true,
+    "reproducibility_record_json_download": true
+  },
+  "aemo": {
+    "xgboost": {"MAE": 90.37075680592021, "RMSE": 122.68952063922305, "best_iteration": 140},
+    "lstm": {"MAE": 164.5126878081775, "RMSE": 202.09099342907572, "best_epoch": 20}
+  },
+  "ausgrid": {
+    "xgboost": {"MAE": 0.06764992410217513, "RMSE": 0.14061913620964467, "best_iteration": 128},
+    "lstm": {"MAE": 0.06879511557158004, "RMSE": 0.13935192885821215, "best_epoch": 18}
+  },
+  "result": "passed",
+  "manual_usability_status": "two independent human reviews still required"
+}

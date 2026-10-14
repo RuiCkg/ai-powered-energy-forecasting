@@ -16,10 +16,10 @@ Both models use the same chronological train/validation partitions and the same 
 
 | Case | Metric | XGBoost | LSTM | Better validation result |
 | --- | --- | ---: | ---: | --- |
-| AEMO NSW1 demand | MAE (MW) | **90.45** | 164.51 | XGBoost |
-| AEMO NSW1 demand | RMSE (MW) | **123.59** | 202.09 | XGBoost |
-| Ausgrid customer 1 GG | MAE (kWh/slot) | **0.0680** | 0.0688 | XGBoost |
-| Ausgrid customer 1 GG | RMSE (kWh/slot) | 0.1408 | **0.1394** | LSTM |
+| AEMO NSW1 demand | MAE (MW) | **90.37** | 164.51 | XGBoost |
+| AEMO NSW1 demand | RMSE (MW) | **122.69** | 202.09 | XGBoost |
+| Ausgrid customer 1 GG | MAE (kWh/slot) | **0.0676** | 0.0688 | XGBoost |
+| Ausgrid customer 1 GG | RMSE (kWh/slot) | 0.1406 | **0.1394** | LSTM |
 
 Both models beat the seasonal-naive and persistence baselines on validation MAE. XGBoost is preferred for the demonstration because it has the lowest MAE in both cases, trains faster in the current CPU workflow, and provides native SHAP contributions. LSTM remains valuable evidence that the platform supports a genuinely sequential deep-learning approach; it also gives the lowest Ausgrid RMSE by a small margin.
 

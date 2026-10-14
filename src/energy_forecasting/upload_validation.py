@@ -208,8 +208,11 @@ AEMO_MONTHLY_POLICY = UploadPolicy(
 AUSGRID_ARCHIVE_POLICY = UploadPolicy(
     name="ausgrid_solar_home_zip",
     max_bytes=64 * 1024 * 1024,
-    allowed_member_suffixes=frozenset({".csv", ".txt", ".md", ".pdf"}),
-    max_nesting_depth=1,
+    # The documented source also contains one supplementary historical ZIP.
+    # It is not parsed by the forecasting workflow, but it must still pass the
+    # same recursive archive-safety checks as every other member.
+    allowed_member_suffixes=frozenset({".csv", ".txt", ".md", ".pdf", ".xlsx", ".zip"}),
+    max_nesting_depth=2,
     max_members=64,
     max_expanded_bytes=512 * 1024 * 1024,
     max_files=1,

@@ -82,6 +82,20 @@ def ausgrid_shaped_archive() -> bytes:
     return zip_bytes([("Solar home 2012-2013.csv", b"notice\nCustomer,Generator Capacity\n")])
 
 
+def ausgrid_archive_with_supplementary_zip() -> bytes:
+    supplementary = zip_bytes([
+        ("historical.csv", b"date,value\n"),
+        ("Solar Monthly Data Notes.xlsx", b"PK\x03\x04sample workbook bytes"),
+    ])
+    return zip_bytes([
+        ("Solar home 2011-2012.csv", b"notice\nCustomer,Generator Capacity\n"),
+        ("Solar home 2012-2013.csv", b"notice\nCustomer,Generator Capacity\n"),
+        ("README.md", b"Source notes"),
+        ("Ausgrid solar home electricity data notes.pdf", b"%PDF-1.4\n"),
+        ("Solar home monthly data 2007 to 2014.ZIP", supplementary),
+    ])
+
+
 def encrypted_archive() -> bytes:
     """Mark a member encrypted by setting general-purpose bit 0 in both headers.
 
@@ -249,6 +263,16 @@ class AcceptedUploadTest(unittest.TestCase):
         self.assertEqual(descriptor.policy_name, "ausgrid_solar_home_zip")
         self.assertEqual(descriptor.member_suffixes, (".csv",))
         self.assertEqual(descriptor.deepest_nesting, 1)
+
+    def test_documented_ausgrid_supplementary_zip_is_safely_inspected(self):
+        descriptor = validate_upload(
+            "Ausgrid_solar_home_data.zip",
+            ausgrid_archive_with_supplementary_zip(),
+            AUSGRID_ARCHIVE_POLICY,
+        )
+        self.assertEqual(descriptor.deepest_nesting, 2)
+        self.assertEqual(descriptor.member_count, 7)
+        self.assertEqual(descriptor.member_suffixes, (".csv", ".md", ".pdf", ".xlsx", ".zip"))
 
     def test_ausgrid_limit_is_separate_from_the_aemo_limit(self):
         """The Part B2 10 MB figure cannot be applied to both inputs at once."""
