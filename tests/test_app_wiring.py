@@ -63,9 +63,12 @@ class AppWiringTest(unittest.TestCase):
         self.assertIn('width="stretch"', APP_SOURCE)
         self.assertNotIn("use_container_width", APP_SOURCE)
 
-    def test_model_completion_refreshes_status_and_rerun_labels(self):
+    def test_model_completion_refreshes_status_without_duplicate_button_rows(self):
         self.assertIn('st.session_state["completion_notice"]', APP_SOURCE)
-        self.assertGreaterEqual(APP_SOURCE.count("st.rerun()"), 2)
+        self.assertIn("on_click=run_validation_model", APP_SOURCE)
+        self.assertEqual(APP_SOURCE.count('key=f"xgb_{case}"'), 1)
+        self.assertEqual(APP_SOURCE.count('key=f"lstm_{case}"'), 1)
+        self.assertNotIn("st.rerun()", APP_SOURCE)
 
 
 if __name__ == "__main__":

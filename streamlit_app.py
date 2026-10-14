@@ -29,6 +29,38 @@ UNITS = {"aemo": "MW", "ausgrid": "kWh / source half-hour slot"}
 MODEL_ORDER = ("XGBoost", "LSTM")
 
 
+def run_validation_model(case: str, model_name: str) -> None:
+    """Run a model before the next page render to avoid duplicate widget rows."""
+    case_data = st.session_state["prepared"][case]
+    parts = case_data["parts"]
+    messages = {
+        "XGBoost": "Training XGBoost and calculating SHAP contributions…",
+        "LSTM": "Training the CPU LSTM; this may take several minutes…",
+    }
+    trainers = {
+        "XGBoost": fit_and_validate,
+        "LSTM": fit_and_validate_lstm,
+    }
+    try:
+        with st.spinner(messages[model_name]):
+            st.session_state["results"][case][model_name] = trainers[model_name](
+                parts,
+                case,
+                include_preview=True,
+            )
+        st.session_state["completion_notice"] = {
+            "case": case,
+            "model": model_name,
+        }
+        st.session_state.pop("model_error", None)
+    except (RuntimeError, ValueError, OSError) as error:
+        st.session_state["model_error"] = {
+            "case": case,
+            "model": model_name,
+            "message": str(error),
+        }
+
+
 def metric_table(case_data: dict, model_results: dict) -> pd.DataFrame:
     """Return full-precision validation metrics for evidence and downloads."""
     validation = case_data["parts"]["validation"]
@@ -313,31 +345,26 @@ if "prepared" in st.session_state:
         st.success(
             f"{completion_notice['model']} completed. Results are available below."
         )
+    model_error = st.session_state.pop("model_error", None)
+    if model_error and model_error["case"] == case:
+        st.error(f"{model_error['model']} failed: {model_error['message']}")
     xgb_column, lstm_column = st.columns(2)
     xgb_label = "Re-run XGBoost" if "XGBoost" in results else "Run XGBoost"
     lstm_label = "Re-run LSTM" if "LSTM" in results else "Run LSTM"
-    if xgb_column.button(xgb_label, key=f"xgb_{case}", width="stretch"):
-        try:
-            with st.spinner("Training XGBoost and calculating SHAP contributions…"):
-                results["XGBoost"] = fit_and_validate(parts, case, include_preview=True)
-            st.session_state["completion_notice"] = {
-                "case": case,
-                "model": "XGBoost",
-            }
-            st.rerun()
-        except (RuntimeError, ValueError, OSError) as error:
-            st.error(f"XGBoost failed: {error}")
-    if lstm_column.button(lstm_label, key=f"lstm_{case}", width="stretch"):
-        try:
-            with st.spinner("Training the CPU LSTM; this may take several minutes…"):
-                results["LSTM"] = fit_and_validate_lstm(parts, case, include_preview=True)
-            st.session_state["completion_notice"] = {
-                "case": case,
-                "model": "LSTM",
-            }
-            st.rerun()
-        except (RuntimeError, ValueError, OSError) as error:
-            st.error(f"LSTM failed: {error}")
+    xgb_column.button(
+        xgb_label,
+        key=f"xgb_{case}",
+        width="stretch",
+        on_click=run_validation_model,
+        args=(case, "XGBoost"),
+    )
+    lstm_column.button(
+        lstm_label,
+        key=f"lstm_{case}",
+        width="stretch",
+        on_click=run_validation_model,
+        args=(case, "LSTM"),
+    )
     completed = [name for name in MODEL_ORDER if name in results]
     if completed:
         st.caption("Completed models: " + ", ".join(completed))
