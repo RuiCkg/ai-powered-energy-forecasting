@@ -13,6 +13,7 @@ import streamlit as st
 sys.path.insert(0, str(Path(__file__).resolve().parent / "src"))
 
 from energy_forecasting.baseline import evaluate_persistence, evaluate_seasonal_naive
+from energy_forecasting.dashboard import forecast_plot_timestamp
 from energy_forecasting.demo_data import prepare_uploaded_sources
 from energy_forecasting.experiment_record import build_experiment_record
 from energy_forecasting.lstm_model import fit_and_validate_lstm
@@ -93,8 +94,12 @@ def show_workflow_progress(aemo_files, ausgrid_file) -> None:
 
 def forecast_chart(case: str, frame: pd.DataFrame, model_name: str) -> alt.Chart:
     """Use both colour and line style so the series are not colour-dependent."""
-    chart_rows = frame.head(96).melt(
-        id_vars="target_key",
+    chart_frame = frame.head(96).copy()
+    chart_frame["plot_timestamp"] = chart_frame["target_key"].map(
+        lambda target_key: forecast_plot_timestamp(case, target_key)
+    )
+    chart_rows = chart_frame.melt(
+        id_vars=["target_key", "plot_timestamp"],
         value_vars=["actual", "predicted"],
         var_name="Series",
         value_name="Value",
@@ -103,7 +108,7 @@ def forecast_chart(case: str, frame: pd.DataFrame, model_name: str) -> alt.Chart
         alt.Chart(chart_rows)
         .mark_line(strokeWidth=2.5)
         .encode(
-            x=alt.X("target_key:T", title="Validation target"),
+              x=alt.X("plot_timestamp:T", title="Validation target"),
             y=alt.Y("Value:Q", title=UNITS[case], scale=alt.Scale(zero=False)),
             color=alt.Color(
                 "Series:N",
@@ -122,7 +127,7 @@ def forecast_chart(case: str, frame: pd.DataFrame, model_name: str) -> alt.Chart
                 legend=alt.Legend(title=None),
             ),
             tooltip=[
-                alt.Tooltip("target_key:T", title="Target"),
+                  alt.Tooltip("target_key:N", title="Target"),
                 alt.Tooltip("Series:N"),
                 alt.Tooltip("Value:Q", format=".3f"),
             ],
@@ -144,7 +149,7 @@ def show_forecast_result(case: str, model_name: str, result: dict) -> None:
         f"Across {metrics['example_count']:,} validation targets, {model_name} "
         f"achieved MAE {metrics['MAE']:.{decimals}f} and "
         f"RMSE {metrics['RMSE']:.{decimals}f} {UNITS[case]}. "
-        "The chart shows the first 96 targets (48 hours) for readability."
+          "The chart shows the first 96 validation targets for readability."
     )
     st.altair_chart(
         forecast_chart(case, frame, model_name),
