@@ -1,0 +1,50 @@
+{
+  "date": "2026-10-14",
+  "scope": "validation only; test partitions not scored",
+  "environment": {
+    "python": "3.13.5",
+    "torch": "2.14.0+cpu",
+    "xgboost": "3.4.1"
+  },
+  "aemo": {
+    "unit": "MW",
+    "validation_examples": 2928,
+    "seasonal_naive": {"MAE": 393.4225, "RMSE": 605.5075, "MAPE_positive_actual_percent": 5.756},
+    "persistence": {"MAE": 188.0147, "RMSE": 234.7813, "MAPE_positive_actual_percent": 2.614},
+    "xgboost": {
+      "MAE": 90.45323314562522,
+      "RMSE": 123.5932048821302,
+      "MAPE_positive_actual_percent": 1.2542397056485861,
+      "best_iteration": 176,
+      "maximum_scaled_shap_additivity_error": 0.0000013279836447534623
+    },
+    "lstm": {
+      "MAE": 164.5126878081775,
+      "RMSE": 202.09099342907572,
+      "MAPE_positive_actual_percent": 2.3219454101722814,
+      "best_epoch": 20,
+      "epochs_run": 20
+    }
+  },
+  "ausgrid": {
+    "unit": "kWh/source half-hour slot",
+    "validation_examples": 4230,
+    "zero_actuals_excluded_from_mape": 2029,
+    "seasonal_naive": {"MAE": 0.156654, "RMSE": 0.323453, "MAPE_positive_actual_percent": 130.056},
+    "persistence": {"MAE": 0.0849693, "RMSE": 0.163435, "MAPE_positive_actual_percent": 63.286},
+    "xgboost": {
+      "MAE": 0.06796486124516515,
+      "RMSE": 0.14080703722751806,
+      "MAPE_positive_actual_percent": 41.87895669578973,
+      "best_iteration": 130,
+      "maximum_scaled_shap_additivity_error": 0.0000010121665281339228
+    },
+    "lstm": {
+      "MAE": 0.06879511557158004,
+      "RMSE": 0.13935192885821215,
+      "MAPE_positive_actual_percent": 48.05086327570961,
+      "best_epoch": 18,
+      "epochs_run": 20
+    }
+  }
+}

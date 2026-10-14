@@ -243,7 +243,9 @@ Upload validation wired into Streamlit interface:
 - ✓ SHAP additivity: 6 tests → PASS
 - ✓ App wiring: 5 tests → PASS
 
-**Status: ✓ READY FOR PRODUCTION DEPLOYMENT**
+**Status: ✓ SECURITY CONTROLS READY FOR CONTROLLED LOCAL DEMONSTRATION**
+
+This status does not mean that the complete forecasting platform is production-ready. Live ingestion, deployment infrastructure, operational monitoring, client acceptance and final held-out evaluation remain incomplete.
 
 ---
 
@@ -265,7 +267,7 @@ While security implementation is complete, the following remain for broader proj
 Run all security tests locally:
 
 ```bash
-cd /home/claude/sineth/ai-powered-energy-forecasting-main
+# Run from the repository root
 python -m pip install pytest numpy scipy
 python -m pytest tests/test_upload_validation.py \
                   tests/test_experiment_record.py \

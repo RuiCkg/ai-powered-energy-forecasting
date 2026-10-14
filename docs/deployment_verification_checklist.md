@@ -184,12 +184,12 @@ Documented security framework and requirements:
 
 ---
 
-## Phase 8: Production Readiness (✓ READY)
+## Phase 8: Controlled Demonstration Readiness
 
-Final verification before production deployment:
+Verification for the local historical-validation demonstration. This is not production certification:
 
 ### Code Quality
-- [x] All 48 security tests passing (17 + 20 + 6 + 5)
+- [x] Full repository test suite passing
 - [x] No test failures or skipped tests
 - [x] All rejection codes have safe, generic messages
 - [x] No hardcoded credentials or secrets in code
@@ -212,7 +212,7 @@ Final verification before production deployment:
 - [x] Experiment record tests (20 tests) → **PASSED**
 - [x] SHAP additivity tests (6 tests) → **PASSED**
 - [x] App wiring tests (5 tests) → **PASSED**
-- [x] Total: 48 tests passing
+- [x] Repository total on 14 October 2026: 70 tests plus 52 upload-validation subtests passing
 
 ### Deployment Artifacts
 - [x] Core modules: `upload_validation.py`, `experiment_record.py`

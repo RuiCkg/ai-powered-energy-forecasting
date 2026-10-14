@@ -1,23 +1,34 @@
-# Architectural Decision Analysis: LSTM vs. GRU vs. TCN
+# Model decision analysis
 
-**Author:** Khang Huynh (AI/ML Model Lead)  
-**Project:** AI-Powered Energy Forecasting Platform  
+**Owner:** Khang Huynh (AI/ML Model Lead)
 
----
+**Reviewed:** 14 October 2026
 
-## 1. Executive Summary
-This document outlines the theoretical and empirical evaluation comparing **LSTM (Long Short-Term Memory)** against alternative sequence architectures, specifically **GRU (Gated Recurrent Unit)** and **TCN (Temporal Convolutional Network)**, justifying why LSTM was retained as the advanced sequence model for the platform[cite: 3].
+## Decision
 
-## 2. Comparative Matrix
+The prototype retains a small one-layer LSTM as the advanced sequence-model comparator and uses XGBoost as the current primary validation candidate. This decision is based on the implemented, reproducible comparison below—not on an unsupported claim that one architecture is universally superior.
 
-| Evaluation Criteria | Stacked LSTM (Selected)[cite: 3] | Gated Recurrent Unit (GRU)[cite: 3] | Temporal Convolutional Network (TCN)[cite: 3] |
-| :--- | :--- | :--- | :--- |
-| **Gating Architecture** | 3 Gates (Input, Forget, Output) + Dedicated Cell State $C_t$[cite: 3]. | 2 Gates (Reset, Update); no separate cell state[cite: 3]. | Dilated 1D Causal Convolutions + Residual Blocks[cite: 3]. |
-| **Long-Term Memory Retention** | Superior long-horizon error propagation over 168-hour seasonalities[cite: 3]. | Slight error degradation over extended sequence windows[cite: 3]. | High receptive field, but requires deep stack for long lags[cite: 3]. |
-| **Training Execution Speed** | Moderate (~18s per 50 epochs on GPU)[cite: 3, 5]. | 25% faster per epoch due to reduced parameter count[cite: 3]. | Fast parallel training across time steps[cite: 3]. |
-| **Parameter Tuning Risk** | Stable convergence with standard Adam optimizer[cite: 3]. | Sensitive to learning rate spikes on noisy load spikes[cite: 3]. | Complex hyperparameter search (kernel size, dilation factor)[cite: 3]. |
+GRU and TCN remain possible future alternatives. They were considered conceptually but were not implemented or empirically evaluated in this project, so no performance claim is made for them.
 
-## 3. Decision Justification
-1. **Cell State Mechanics:** Energy demand features distinct daily (24h) and weekly (168h) temporal patterns[cite: 3]. LSTM's separate cell state ($C_t$) acts as an unattenuated memory line, preventing historical temporal gradients from vanishing across long lag sequences[cite: 3].
-2. **Complementary Paradigm to XGBoost:** XGBoost models static tabular interactions, whereas LSTM provides a true recurrent state space model[cite: 3].
-3. **Resource Risk Mitigation:** To manage Google Colab free GPU limits (Risk R1/R5)[cite: 3, 5], PyTorch `EarlyStopping` was introduced, capping training execution under 20 seconds and satisfying NFR-1[cite: 3, 4].
+## Implemented comparison
+
+Both models use the same chronological train/validation partitions and the same one-step target definition. Model selection uses validation only; the reserved test targets are not reported here.
+
+| Case | Metric | XGBoost | LSTM | Better validation result |
+| --- | --- | ---: | ---: | --- |
+| AEMO NSW1 demand | MAE (MW) | **90.45** | 164.51 | XGBoost |
+| AEMO NSW1 demand | RMSE (MW) | **123.59** | 202.09 | XGBoost |
+| Ausgrid customer 1 GG | MAE (kWh/slot) | **0.0680** | 0.0688 | XGBoost |
+| Ausgrid customer 1 GG | RMSE (kWh/slot) | 0.1408 | **0.1394** | LSTM |
+
+Both models beat the seasonal-naive and persistence baselines on validation MAE. XGBoost is preferred for the demonstration because it has the lowest MAE in both cases, trains faster in the current CPU workflow, and provides native SHAP contributions. LSTM remains valuable evidence that the platform supports a genuinely sequential deep-learning approach; it also gives the lowest Ausgrid RMSE by a small margin.
+
+## Limitations and future options
+
+- The LSTM uses 48 historical values and six known calendar fields, not a 168-hour history.
+- Only one bounded LSTM configuration was run; the AEMO score was still improving at epoch 20.
+- GRU and TCN require implementation on the same splits before a fair empirical comparison is possible.
+- Validation results do not establish performance on the reserved test periods, other regions/customers, longer horizons or live data.
+- The PV MAPE excludes 2,029 zero-actual targets, so MAE and RMSE are the primary PV decision metrics.
+
+Reproduction details are in [`lstm_experiment.md`](lstm_experiment.md), [`first_ml_experiment.md`](first_ml_experiment.md) and [`validation_results_2026-10-14.json`](validation_results_2026-10-14.json).
