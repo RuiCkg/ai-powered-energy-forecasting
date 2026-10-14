@@ -7,7 +7,7 @@
 - Computed previous-day seasonal-naive and previous-slot persistence references; trained one XGBoost and one small LSTM per case; reported validation MAE/RMSE and positive-actual MAPE with zero exclusions.
 - Added XGBoost's native SHAP contributions on validation rows, plus a local Streamlit dashboard for source review, case-by-case comparison, actual-versus-predicted plots, and downloadable validation CSV/JSON.
 - Refined the dashboard with a five-step workflow, compact upload status, rounded on-screen metrics, best-model summary cards, four result tabs, non-colour-only forecast lines, plain-language chart summaries and explicit processing/completion states.
-- Passed 74 automated tests plus 52 upload-validation subtests, covering parsers, splits, input contracts, features, models, SHAP additivity, security, reproducibility and accessible UI structure. Reopened both real source types through in-memory ZIPs and confirmed the local dashboard starts and responds to a health check.
+- Passed 75 automated tests plus 52 upload-validation subtests, covering parsers, splits, input contracts, features, models, SHAP additivity, security, reproducibility and accessible UI structure. Reopened both real source types through in-memory ZIPs and confirmed the local dashboard starts and responds to a health check.
 - Recorded copy-specific hashes and AEMO low/abrupt-change review flags in the [data manifest](data_manifest.md), plus Rui's [integration handoff](rui_data_handoff.md). No anomalous reading was silently removed.
 
 ## Not yet settled or delivered

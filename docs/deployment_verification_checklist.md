@@ -212,7 +212,7 @@ Verification for the local historical-validation demonstration. This is not prod
 - [x] Experiment record tests (20 tests) → **PASSED**
 - [x] SHAP additivity tests (6 tests) → **PASSED**
 - [x] App wiring tests (5 tests) → **PASSED**
-- [x] Repository total on 14 October 2026: 74 tests plus 52 upload-validation subtests passing
+- [x] Repository total on 14 October 2026: 75 tests plus 52 upload-validation subtests passing
 
 ### Deployment Artifacts
 - [x] Core modules: `upload_validation.py`, `experiment_record.py`

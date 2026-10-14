@@ -294,6 +294,11 @@ if "prepared" in st.session_state:
 
     results = st.session_state["results"][case]
     st.subheader("3. Run validation models")
+    completion_notice = st.session_state.pop("completion_notice", None)
+    if completion_notice and completion_notice["case"] == case:
+        st.success(
+            f"{completion_notice['model']} completed. Results are available below."
+        )
     xgb_column, lstm_column = st.columns(2)
     xgb_label = "Re-run XGBoost" if "XGBoost" in results else "Run XGBoost"
     lstm_label = "Re-run LSTM" if "LSTM" in results else "Run LSTM"
@@ -301,14 +306,22 @@ if "prepared" in st.session_state:
         try:
             with st.spinner("Training XGBoost and calculating SHAP contributions…"):
                 results["XGBoost"] = fit_and_validate(parts, case, include_preview=True)
-            st.success("XGBoost completed. Results are available below.")
+            st.session_state["completion_notice"] = {
+                "case": case,
+                "model": "XGBoost",
+            }
+            st.rerun()
         except (RuntimeError, ValueError, OSError) as error:
             st.error(f"XGBoost failed: {error}")
     if lstm_column.button(lstm_label, key=f"lstm_{case}", width="stretch"):
         try:
             with st.spinner("Training the CPU LSTM; this may take several minutes…"):
                 results["LSTM"] = fit_and_validate_lstm(parts, case, include_preview=True)
-            st.success("LSTM completed. Results are available below.")
+            st.session_state["completion_notice"] = {
+                "case": case,
+                "model": "LSTM",
+            }
+            st.rerun()
         except (RuntimeError, ValueError, OSError) as error:
             st.error(f"LSTM failed: {error}")
     completed = [name for name in MODEL_ORDER if name in results]

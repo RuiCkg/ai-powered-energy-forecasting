@@ -58,6 +58,10 @@ class AppWiringTest(unittest.TestCase):
         self.assertIn('width="stretch"', APP_SOURCE)
         self.assertNotIn("use_container_width", APP_SOURCE)
 
+    def test_model_completion_refreshes_status_and_rerun_labels(self):
+        self.assertIn('st.session_state["completion_notice"]', APP_SOURCE)
+        self.assertGreaterEqual(APP_SOURCE.count("st.rerun()"), 2)
+
 
 if __name__ == "__main__":
     unittest.main()
