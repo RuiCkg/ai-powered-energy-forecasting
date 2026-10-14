@@ -6,6 +6,7 @@ from __future__ import annotations
 from datetime import datetime
 
 from .baseline import evaluate_predictions, preview_predictions
+from .explainability import compute_shap_contributions, global_feature_importance, local_explanation
 
 
 # --------------------------------------------------
@@ -259,10 +260,10 @@ def fit_and_validate(
     # SHAP FEATURE CONTRIBUTIONS
     # --------------------------------------------------
 
-    contributions = booster.predict(
+    contributions = compute_shap_contributions(
+        booster,
         validation,
         iteration_range=iteration_range,
-        pred_contribs=True,
     )
 
     # Validate SHAP reconstruction against raw predictions
@@ -277,11 +278,8 @@ def fit_and_validate(
             f"Maximum scaled error: {shap_error:.8f}"
         )
 
-    mean_abs = np.abs(
-        contributions[:, :-1]
-    ).mean(axis=0)
-
-    first = contributions[0]
+    mean_abs = global_feature_importance(contributions).reindex(FEATURE_NAMES)
+    first = local_explanation(contributions)
 
     # --------------------------------------------------
     # RESULT INFORMATION
@@ -305,23 +303,15 @@ def fit_and_validate(
 
         "validation_mean_absolute_SHAP_by_feature": {
             name: float(value)
-            for name, value in zip(
-                FEATURE_NAMES,
-                mean_abs,
-            )
+            for name, value in mean_abs.items()
         },
 
         "validation_first_local_SHAP": {
-            "bias": float(first[-1]),
-
+            "bias": first["bias"],
             "feature_contributions": {
                 name: float(value)
-                for name, value in zip(
-                    FEATURE_NAMES,
-                    first[:-1],
-                )
+                for name, value in first["feature_contributions"].items()
             },
-
             "raw_prediction_before_clipping": float(raw[0]),
         },
 

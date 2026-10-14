@@ -3,7 +3,7 @@ Local prototype for separately forecasting electricity load and photovoltaic ene
 
 Two provisional cases use real files: AEMO `NSW1` operational demand (12 months, MW) and Ausgrid customer `1` gross PV generation (`GG`; two quality-flagged years, kWh per original half-hour source slot). Both are one-step historical **validation** backtests. Neither the operational forecast horizon nor Ausgrid daylight-saving conversion has been approved; the app is not a live prediction service. See [data-source evidence](docs/data_sources.md), [XGBoost experiment](docs/first_ml_experiment.md), [LSTM experiment](docs/lstm_experiment.md) and [MVP status](docs/mvp_status.md).
 
-Run the 12 archive, source-value, input-contract, chronology and feature tests with:
+Run the full archive, source-value, input-contract, chronology, model, explainability, security and reproducibility test suite with:
 
 ```text
 python -m unittest discover -s tests -v

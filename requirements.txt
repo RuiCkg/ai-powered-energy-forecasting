@@ -1,4 +1,5 @@
 # Reproducible CPU XGBoost experiment; Python 3.12+.
 numpy==2.5.3
+pandas==2.3.2
 scipy==1.18.1
 xgboost-cpu==3.4.1
