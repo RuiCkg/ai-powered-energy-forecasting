@@ -16,6 +16,16 @@ EXPECTED_AEMO_NAMES = {
     for month in months
 }
 
+AEMO_BOUNDARIES = {
+    "validation_start": datetime(2026, 4, 1, 4, 30, tzinfo=NEM_TIME),
+    "test_start": datetime(2026, 6, 1, 4, 30, tzinfo=NEM_TIME),
+}
+
+AUSGRID_BOUNDARIES = {
+    "validation_start": date(2013, 1, 1),
+    "test_start": date(2013, 4, 1),
+}
+
 
 def prepare_uploaded_sources(aemo_files, ausgrid_file):
     """Validate these exact source cases and return causal chronological examples."""
@@ -45,16 +55,21 @@ def prepare_uploaded_sources(aemo_files, ausgrid_file):
     return {
         "aemo": {
             "profile": aemo_profile,
+            "boundaries": dict(AEMO_BOUNDARIES),
             "parts": partition_examples(
                 aemo_examples,
-                datetime(2026, 4, 1, 4, 30, tzinfo=NEM_TIME),
-                datetime(2026, 6, 1, 4, 30, tzinfo=NEM_TIME),
+                AEMO_BOUNDARIES["validation_start"],
+                AEMO_BOUNDARIES["test_start"],
             ),
         },
         "ausgrid": {
             "profile": ausgrid_profile,
+            "boundaries": dict(AUSGRID_BOUNDARIES),
             "parts": partition_examples(
-                ausgrid_examples, date(2013, 1, 1), date(2013, 4, 1), source_date_key=True
+                ausgrid_examples,
+                AUSGRID_BOUNDARIES["validation_start"],
+                AUSGRID_BOUNDARIES["test_start"],
+                source_date_key=True,
             ),
         },
     }

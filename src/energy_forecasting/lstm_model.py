@@ -14,6 +14,16 @@ MAX_EPOCHS = 20
 PATIENCE = 3
 SEED = 42
 
+FIXED_CONFIG = {
+    "hidden_units": HIDDEN_UNITS,
+    "learning_rate": LEARNING_RATE,
+    "batch_size": BATCH_SIZE,
+    "max_epochs": MAX_EPOCHS,
+    "patience": PATIENCE,
+    "seed": SEED,
+}
+
+
 
 def calendar_fields(example: dict, case: str) -> list[float]:
     """Cyclic encodings of the known target slot, weekday and month (no target value)."""
