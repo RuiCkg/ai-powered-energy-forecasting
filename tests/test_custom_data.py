@@ -8,6 +8,7 @@ import pandas as pd
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 from energy_forecasting.custom_data import (
+    build_synthetic_demo_csv,
     infer_daily_seasonal_period,
     inspect_custom_csv,
     prepare_custom_csv,
@@ -25,6 +26,26 @@ def sample_csv(rows: int = 160) -> bytes:
 
 
 class CustomCSVTest(unittest.TestCase):
+    def test_synthetic_demo_is_a_complete_valid_example(self):
+        data = build_synthetic_demo_csv()
+        inspection = inspect_custom_csv("synthetic_energy_demo.csv", data)
+        self.assertEqual(inspection.row_count, 672)
+        self.assertEqual(
+            inspection.columns,
+            ("timestamp", "energy_kwh", "temperature_c"),
+        )
+        case, evidence = prepare_custom_csv(
+            "synthetic_energy_demo.csv",
+            data,
+            "timestamp",
+            "energy_kwh",
+            ["temperature_c"],
+            seasonal_period=48,
+            unit="kWh / half-hour",
+        )
+        self.assertTrue(all(case["parts"].values()))
+        self.assertEqual(evidence["accepted_upload_count"], 1)
+
     def test_inspection_and_daily_period_inference(self):
         data = sample_csv()
         inspection = inspect_custom_csv("sample.csv", data)

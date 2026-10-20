@@ -47,7 +47,9 @@ class AppWiringTest(unittest.TestCase):
         self.assertIn("validate_documented_sources", APP_SOURCE)
 
     def test_the_user_journey_has_progress_and_result_sections(self):
-        self.assertIn("st.progress(", APP_SOURCE)
+        self.assertIn('class="workflow-steps"', APP_SOURCE)
+        for mode in ("Try demo data", "Upload your CSV", "Official benchmark · Advanced"):
+            self.assertIn(f'"{mode}"', APP_SOURCE)
         for label in ("Overview", "Forecasts", "Explainability (XGBoost)", "Downloads"):
             self.assertIn(f'"{label}"', APP_SOURCE)
 

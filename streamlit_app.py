@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import io
 import json
 import sys
 from pathlib import Path
@@ -14,6 +15,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent / "src"))
 
 from energy_forecasting.baseline import evaluate_persistence, evaluate_seasonal_naive
 from energy_forecasting.custom_data import (
+    build_synthetic_demo_csv,
     infer_daily_seasonal_period,
     inspect_custom_csv,
     prepare_custom_csv,
@@ -121,22 +123,6 @@ def apply_interface_theme() -> None:
     .section-title { color: var(--energy-ink); font-size: 1.45rem; font-weight: 750; margin: 0 0 .2rem; }
     .section-copy { color: var(--energy-muted); margin: 0 0 .85rem; }
 
-    .mode-card {
-        min-height: 122px;
-        border: 1px solid var(--energy-line);
-        background: #ffffff;
-        border-radius: 16px;
-        padding: 1rem 1.1rem;
-        box-shadow: 0 5px 18px rgba(16, 36, 62, .05);
-    }
-    .mode-card.selected {
-        border: 2px solid var(--energy-teal);
-        background: linear-gradient(145deg, #ffffff, #f0fbfa);
-        box-shadow: 0 8px 24px rgba(15, 139, 141, .12);
-    }
-    .mode-card strong { display: block; color: var(--energy-ink); font-size: 1rem; margin-bottom: .28rem; }
-    .mode-card span { color: var(--energy-muted); font-size: .88rem; line-height: 1.45; }
-
     .workflow-shell {
         border: 1px solid var(--energy-line);
         background: #ffffff;
@@ -190,6 +176,18 @@ def apply_interface_theme() -> None:
         background: linear-gradient(100deg, var(--energy-blue), var(--energy-teal));
         box-shadow: 0 7px 18px rgba(29, 95, 143, .18);
     }
+    .stButton > button:disabled,
+    .stButton > button[kind="primary"]:disabled {
+        color: #637083 !important;
+        background: #e8eef3 !important;
+        border: 1px solid #d3dde6 !important;
+        box-shadow: none !important;
+        opacity: 1 !important;
+    }
+    div[data-testid="stSegmentedControl"] button {
+        min-height: 2.75rem;
+        font-weight: 700;
+    }
     button[data-baseweb="tab"] { font-weight: 700; }
     div[data-testid="stDataFrame"] { border: 1px solid var(--energy-line); border-radius: 12px; overflow: hidden; }
     .energy-note {
@@ -214,8 +212,18 @@ def apply_interface_theme() -> None:
         .block-container { padding: .8rem .75rem 2.5rem; }
         .energy-hero { padding: 1.45rem 1.25rem; border-radius: 16px; }
         .energy-hero h1 { font-size: 2rem; }
-        .workflow-steps { grid-template-columns: 1fr; gap: .25rem; }
-        .workflow-step { border-top: 0; border-left: 4px solid #d8e0e8; padding: .35rem 0 .35rem .65rem; }
+        .workflow-steps {
+            grid-template-columns: repeat(5, minmax(74px, 1fr));
+            gap: .35rem;
+            overflow-x: auto;
+            padding-bottom: .25rem;
+        }
+        .workflow-step {
+            border-top: 4px solid #d8e0e8;
+            border-left: 0;
+            padding: .42rem .1rem 0;
+            white-space: nowrap;
+        }
         .workflow-head { display: block; }
     }
 </style>
@@ -390,9 +398,12 @@ def display_metric_table(case: str, table: pd.DataFrame) -> pd.DataFrame:
     return displayed
 
 
-def workflow_status(upload_ready: bool) -> tuple[int, str]:
+def workflow_status(upload_ready: bool, input_mode: str) -> tuple[int, str]:
     """Summarise the current five-step workflow without relying on colour."""
-    prepared = "prepared" in st.session_state
+    prepared = (
+        "prepared" in st.session_state
+        and st.session_state.get("prepared_input_mode") == input_mode
+    )
     active_results = []
     if prepared:
         active_case = st.session_state.get("active_case", "aemo")
@@ -406,8 +417,8 @@ def workflow_status(upload_ready: bool) -> tuple[int, str]:
     return 1, "Upload a supported source dataset"
 
 
-def show_workflow_progress(upload_ready: bool) -> None:
-    step, message = workflow_status(upload_ready)
+def show_workflow_progress(upload_ready: bool, input_mode: str) -> None:
+    step, message = workflow_status(upload_ready, input_mode)
     labels = ("Upload", "Validate", "Select", "Model", "Review")
     rendered_steps = []
     for index, label in enumerate(labels, start=1):
@@ -428,7 +439,6 @@ def show_workflow_progress(upload_ready: bool) -> None:
         """,
         unsafe_allow_html=True,
     )
-    st.progress(step / 5, text=f"Step {step} of 5")
 
 
 def forecast_chart(case: str, frame: pd.DataFrame, model_name: str) -> alt.Chart:
@@ -620,48 +630,59 @@ with st.expander("Source files, forecasting rules and metric definitions"):
 show_section_heading(
     "Get started",
     "Choose a data source",
-    "Use the documented Australian datasets or map your own regular energy time series.",
+    "Start instantly, upload your own data or reproduce the documented research benchmark.",
 )
-input_mode = st.radio(
+input_mode = st.segmented_control(
     "Input method",
-    ("Prepared Australian sources", "Custom CSV"),
-    horizontal=True,
+    ("Try demo data", "Upload your CSV", "Official benchmark · Advanced"),
+    default="Try demo data",
     label_visibility="collapsed",
 )
-prepared_class = "selected" if input_mode == "Prepared Australian sources" else ""
-custom_class = "selected" if input_mode == "Custom CSV" else ""
-prepared_card, custom_card = st.columns(2)
-prepared_card.markdown(
-    f"""
-<div class="mode-card {prepared_class}">
-  <strong>Australian reference sources</strong>
-  <span>Reproduce the documented AEMO demand and Ausgrid solar-PV forecasting cases from their original ZIP archives.</span>
-</div>
-    """,
-    unsafe_allow_html=True,
-)
-custom_card.markdown(
-    f"""
-<div class="mode-card {custom_class}">
-  <strong>Custom energy CSV</strong>
-  <span>Upload a regular time series, map the timestamp and target, then optionally add known numeric covariates.</span>
-</div>
-    """,
-    unsafe_allow_html=True,
-)
+mode_descriptions = {
+    "Try demo data": (
+        "No upload required. Explore the complete workflow with a clearly labelled "
+        "synthetic two-week household-energy time series."
+    ),
+    "Upload your CSV": (
+        "Map your timestamp, energy target and optional known numeric covariates. "
+        "The file is validated before model preparation."
+    ),
+    "Official benchmark · Advanced": (
+        "Reproduce the documented AEMO demand and Ausgrid solar-PV cases from the "
+        "original 12 monthly AEMO archives and one Ausgrid archive."
+    ),
+}
+st.info(mode_descriptions[input_mode])
+
+source_step_titles = {
+    "Try demo data": "1. Prepare demonstration data",
+    "Upload your CSV": "1. Upload and map your CSV",
+    "Official benchmark · Advanced": "1. Upload official source archives",
+}
 
 with st.expander(
-    "1. Upload and map source data",
+    source_step_titles[input_mode],
     expanded="prepared" not in st.session_state,
 ):
     aemo_files = None
     ausgrid_file = None
     custom_file = None
     custom_configuration = None
-    if input_mode == "Prepared Australian sources":
+    demo_bytes = None
+    if input_mode == "Try demo data":
+        demo_bytes = build_synthetic_demo_csv()
+        st.markdown(
+            "**Synthetic demonstration dataset**  \n"
+            "14 days · half-hourly observations · household energy target · "
+            "temperature covariate · no personal or operational data"
+        )
+        preview = pd.read_csv(io.BytesIO(demo_bytes)).head(8)
+        st.dataframe(preview, hide_index=True, width="stretch")
+        upload_ready = True
+    elif input_mode == "Official benchmark · Advanced":
         st.caption(
-            "For the reproducible client demonstration, select all 12 consecutive "
-            "AEMO monthly archives together and the single Ausgrid archive."
+            "This advanced path is only for reproducing the two official reference "
+            "cases. General users do not need these 13 source archives."
         )
         aemo_files = st.file_uploader(
             "Upload 12 AEMO monthly ZIP archives",
@@ -684,13 +705,9 @@ with st.expander(
     else:
         template_column, guidance_column = st.columns([1, 2])
         template_column.download_button(
-            "Download CSV template",
-            data=(
-                "timestamp,energy_kwh,temperature_c\n"
-                "2026-01-01T00:00:00+10:00,0.42,21.5\n"
-                "2026-01-01T00:30:00+10:00,0.47,21.2\n"
-            ).encode("utf-8"),
-            file_name="energy_forecast_template.csv",
+            "Download valid sample CSV",
+            data=build_synthetic_demo_csv(),
+            file_name="valid_energy_forecast_sample.csv",
             mime="text/csv",
             width="stretch",
         )
@@ -747,18 +764,45 @@ with st.expander(
                 upload_ready = False
                 st.error(f"CSV inspection failed: {error}")
 
-show_workflow_progress(upload_ready)
+show_workflow_progress(upload_ready, input_mode)
+
+button_disabled = not upload_ready or (
+    input_mode == "Upload your CSV" and custom_configuration is None
+)
+if input_mode == "Try demo data":
+    action_label = "Prepare demo dataset"
+elif input_mode == "Upload your CSV":
+    action_label = "Validate and prepare CSV" if not button_disabled else "Upload a CSV to continue"
+else:
+    action_label = (
+        "Validate and prepare official sources"
+        if not button_disabled else "Select all 13 official archives to continue"
+    )
 
 if st.button(
-    "Validate data and prepare forecasting cases",
+    action_label,
     type="primary",
-    disabled=not upload_ready or (input_mode == "Custom CSV" and custom_configuration is None),
+    disabled=button_disabled,
 ):
     try:
         with st.spinner("Validating schema, chronology and data quality…"):
-            if input_mode == "Prepared Australian sources":
+            if input_mode == "Official benchmark · Advanced":
                 evidence = validate_documented_sources(aemo_files, ausgrid_file)
                 prepared = prepare_uploaded_sources(aemo_files, ausgrid_file)
+            elif input_mode == "Try demo data":
+                demo_case, evidence = prepare_custom_csv(
+                    "synthetic_energy_demo.csv",
+                    demo_bytes,
+                    timestamp_column="timestamp",
+                    target_column="energy_kwh",
+                    covariate_columns=["temperature_c"],
+                    seasonal_period=48,
+                    unit="kWh / half-hour",
+                )
+                demo_case["label"] = "Synthetic household energy demo"
+                demo_case["profile"]["source_type"] = "synthetic demonstration data"
+                evidence["source_type"] = "synthetic demonstration data"
+                prepared = {"demo": demo_case}
             else:
                 custom_case, evidence = prepare_custom_csv(
                     custom_file.name,
@@ -768,6 +812,7 @@ if st.button(
                 prepared = {"custom": custom_case}
             st.session_state["upload_evidence"] = evidence
             st.session_state["prepared"] = prepared
+            st.session_state["prepared_input_mode"] = input_mode
             st.session_state["results"] = {key: {} for key in prepared}
             st.session_state["final_results"] = {}
         st.success("Source data validated and forecasting cases are ready.")
@@ -782,7 +827,10 @@ if st.button(
         st.session_state.pop("results", None)
         st.error(f"Source validation failed: {error}")
 
-if "prepared" in st.session_state:
+if (
+    "prepared" in st.session_state
+    and st.session_state.get("prepared_input_mode") == input_mode
+):
     st.divider()
     show_section_heading(
         "Step 2",
