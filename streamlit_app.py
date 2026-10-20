@@ -118,7 +118,7 @@ def apply_interface_theme() -> None:
         font-weight: 800;
         letter-spacing: .1em;
         text-transform: uppercase;
-        margin: 1.6rem 0 .25rem;
+        margin: .9rem 0 .2rem;
     }
     .section-title { color: var(--energy-ink); font-size: 1.45rem; font-weight: 750; margin: 0 0 .2rem; }
     .section-copy { color: var(--energy-muted); margin: 0 0 .85rem; }
@@ -802,7 +802,9 @@ if st.button(
                 demo_case["label"] = "Synthetic household energy demo"
                 demo_case["profile"]["source_type"] = "synthetic demonstration data"
                 evidence["source_type"] = "synthetic demonstration data"
-                prepared = {"demo": demo_case}
+                # Reuse the fully supported custom-data model path while keeping
+                # the demonstration label and provenance explicit in the UI.
+                prepared = {"custom": demo_case}
             else:
                 custom_case, evidence = prepare_custom_csv(
                     custom_file.name,
@@ -831,71 +833,73 @@ if (
     "prepared" in st.session_state
     and st.session_state.get("prepared_input_mode") == input_mode
 ):
-    st.divider()
-    show_section_heading(
-        "Step 2",
-        "Select a forecasting case",
-        "Review the chronological split before training or comparing models.",
-    )
     if st.session_state.get("active_case") not in st.session_state["prepared"]:
         st.session_state["active_case"] = next(iter(st.session_state["prepared"]))
-    case = st.selectbox(
-        "Dataset",
-        list(st.session_state["prepared"]),
-        format_func=case_label,
-        key="active_case",
-    )
-    case_data = st.session_state["prepared"][case]
-    parts = case_data["parts"]
-    st.write(
-        f"**Unit:** {unit_for(case)}  ·  **Train:** {len(parts['train']):,}  ·  "
-        f"**Validation:** {len(parts['validation']):,}  ·  "
-        f"**Reserved test:** {len(parts['test']):,} targets"
-    )
-    with st.expander("View source profile"):
-        st.json(case_data["profile"])
+    setup_column, model_column = st.columns([1, 1.15], gap="large")
+    with setup_column:
+        show_section_heading(
+            "Step 2",
+            "Select a forecasting case",
+            "Review the chronological split before training or comparing models.",
+        )
+        case = st.selectbox(
+            "Dataset",
+            list(st.session_state["prepared"]),
+            format_func=case_label,
+            key="active_case",
+        )
+        case_data = st.session_state["prepared"][case]
+        parts = case_data["parts"]
+        st.write(
+            f"**Unit:** {unit_for(case)}  ·  **Train:** {len(parts['train']):,}  ·  "
+            f"**Validation:** {len(parts['validation']):,}  ·  "
+            f"**Reserved test:** {len(parts['test']):,} targets"
+        )
+        with st.expander("View source profile"):
+            st.json(case_data["profile"])
 
     results = st.session_state["results"][case]
     final_locked = case in st.session_state.get("final_results", {})
-    show_section_heading(
-        "Step 3",
-        "Run validation models",
-        "Train XGBoost and LSTM on the same evidence and compare them with transparent baselines.",
-    )
-    completion_notice = st.session_state.pop("completion_notice", None)
-    if completion_notice and completion_notice["case"] == case:
-        st.success(
-            f"{completion_notice['model']} completed. Results are available below."
+    with model_column:
+        show_section_heading(
+            "Step 3",
+            "Run validation models",
+            "Train XGBoost and LSTM on the same evidence and compare them with transparent baselines.",
         )
-    model_error = st.session_state.pop("model_error", None)
-    if model_error and model_error["case"] == case:
-        st.error(f"{model_error['model']} failed: {model_error['message']}")
-    xgb_column, lstm_column = st.columns(2)
-    xgb_label = "Re-run XGBoost" if "XGBoost" in results else "Run XGBoost"
-    lstm_label = "Re-run LSTM" if "LSTM" in results else "Run LSTM"
-    xgb_column.button(
-        xgb_label,
-        key=f"xgb_{case}",
-        width="stretch",
-        on_click=run_validation_model,
-        args=(case, "XGBoost"),
-        disabled=final_locked,
-    )
-    lstm_column.button(
-        lstm_label,
-        key=f"lstm_{case}",
-        width="stretch",
-        on_click=run_validation_model,
-        args=(case, "LSTM"),
-        disabled=final_locked,
-    )
-    completed = [name for name in MODEL_ORDER if name in results]
-    if completed:
-        st.caption("Completed models: " + ", ".join(completed))
-    else:
-        st.caption("No trained model yet. Baseline results are already available.")
-    if final_locked:
-        st.caption("Model settings are locked because the reserved test has been evaluated.")
+        completion_notice = st.session_state.pop("completion_notice", None)
+        if completion_notice and completion_notice["case"] == case:
+            st.success(
+                f"{completion_notice['model']} completed. Results are available below."
+            )
+        model_error = st.session_state.pop("model_error", None)
+        if model_error and model_error["case"] == case:
+            st.error(f"{model_error['model']} failed: {model_error['message']}")
+        xgb_column, lstm_column = st.columns(2)
+        xgb_label = "Re-run XGBoost" if "XGBoost" in results else "Run XGBoost"
+        lstm_label = "Re-run LSTM" if "LSTM" in results else "Run LSTM"
+        xgb_column.button(
+            xgb_label,
+            key=f"xgb_{case}",
+            width="stretch",
+            on_click=run_validation_model,
+            args=(case, "XGBoost"),
+            disabled=final_locked,
+        )
+        lstm_column.button(
+            lstm_label,
+            key=f"lstm_{case}",
+            width="stretch",
+            on_click=run_validation_model,
+            args=(case, "LSTM"),
+            disabled=final_locked,
+        )
+        completed = [name for name in MODEL_ORDER if name in results]
+        if completed:
+            st.caption("Completed models: " + ", ".join(completed))
+        else:
+            st.caption("No trained model yet. Baseline results are already available.")
+        if final_locked:
+            st.caption("Model settings are locked because the reserved test has been evaluated.")
 
     comparison = metric_table(case_data, results)
     completed_final = st.session_state.get("final_results", {}).get(case, {})

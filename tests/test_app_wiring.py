@@ -50,6 +50,7 @@ class AppWiringTest(unittest.TestCase):
         self.assertIn('class="workflow-steps"', APP_SOURCE)
         for mode in ("Try demo data", "Upload your CSV", "Official benchmark · Advanced"):
             self.assertIn(f'"{mode}"', APP_SOURCE)
+        self.assertIn('prepared = {"custom": demo_case}', APP_SOURCE)
         for label in ("Overview", "Forecasts", "Explainability (XGBoost)", "Downloads"):
             self.assertIn(f'"{label}"', APP_SOURCE)
 
