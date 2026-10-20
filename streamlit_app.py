@@ -34,6 +34,224 @@ UNITS = {"aemo": "MW", "ausgrid": "kWh / source half-hour slot"}
 MODEL_ORDER = ("XGBoost", "LSTM")
 
 
+def apply_interface_theme() -> None:
+    """Apply a restrained product-style visual system without changing behaviour."""
+    st.markdown(
+        """
+<style>
+    :root {
+        --energy-navy: #10243e;
+        --energy-blue: #1d5f8f;
+        --energy-teal: #0f8b8d;
+        --energy-gold: #e2a72e;
+        --energy-ink: #172033;
+        --energy-muted: #5f6b7a;
+        --energy-line: #dce4ec;
+        --energy-surface: #f6f9fc;
+    }
+
+    .stApp { background: linear-gradient(180deg, #f7fafc 0, #ffffff 23rem); }
+    .block-container { max-width: 1240px; padding-top: 1.5rem; padding-bottom: 4rem; }
+
+    .energy-hero {
+        position: relative;
+        overflow: hidden;
+        color: #ffffff;
+        background: linear-gradient(125deg, var(--energy-navy) 0%, #153f63 58%, var(--energy-teal) 135%);
+        border-radius: 22px;
+        padding: 2.1rem 2.3rem 2rem;
+        margin: 0 0 1.25rem;
+        box-shadow: 0 18px 45px rgba(16, 36, 62, 0.16);
+    }
+    .energy-hero::after {
+        content: "";
+        position: absolute;
+        width: 260px;
+        height: 260px;
+        border-radius: 50%;
+        right: -85px;
+        top: -120px;
+        background: rgba(255,255,255,0.09);
+    }
+    .energy-eyebrow {
+        display: inline-flex;
+        align-items: center;
+        gap: .45rem;
+        font-size: .76rem;
+        font-weight: 750;
+        letter-spacing: .12em;
+        text-transform: uppercase;
+        color: #d6f3f2;
+        margin-bottom: .75rem;
+    }
+    .energy-hero h1 {
+        color: #ffffff;
+        font-size: clamp(2rem, 4vw, 3.25rem);
+        line-height: 1.06;
+        letter-spacing: -.035em;
+        max-width: 850px;
+        margin: 0 0 .8rem;
+    }
+    .energy-hero p {
+        color: #e6eef6;
+        font-size: 1.03rem;
+        line-height: 1.6;
+        max-width: 830px;
+        margin: 0;
+    }
+    .hero-badges { display: flex; flex-wrap: wrap; gap: .55rem; margin-top: 1.25rem; }
+    .hero-badge {
+        border: 1px solid rgba(255,255,255,.24);
+        background: rgba(255,255,255,.09);
+        color: #ffffff;
+        border-radius: 999px;
+        padding: .38rem .72rem;
+        font-size: .79rem;
+        font-weight: 650;
+    }
+
+    .section-label {
+        color: var(--energy-blue);
+        font-size: .76rem;
+        font-weight: 800;
+        letter-spacing: .1em;
+        text-transform: uppercase;
+        margin: 1.6rem 0 .25rem;
+    }
+    .section-title { color: var(--energy-ink); font-size: 1.45rem; font-weight: 750; margin: 0 0 .2rem; }
+    .section-copy { color: var(--energy-muted); margin: 0 0 .85rem; }
+
+    .mode-card {
+        min-height: 122px;
+        border: 1px solid var(--energy-line);
+        background: #ffffff;
+        border-radius: 16px;
+        padding: 1rem 1.1rem;
+        box-shadow: 0 5px 18px rgba(16, 36, 62, .05);
+    }
+    .mode-card.selected {
+        border: 2px solid var(--energy-teal);
+        background: linear-gradient(145deg, #ffffff, #f0fbfa);
+        box-shadow: 0 8px 24px rgba(15, 139, 141, .12);
+    }
+    .mode-card strong { display: block; color: var(--energy-ink); font-size: 1rem; margin-bottom: .28rem; }
+    .mode-card span { color: var(--energy-muted); font-size: .88rem; line-height: 1.45; }
+
+    .workflow-shell {
+        border: 1px solid var(--energy-line);
+        background: #ffffff;
+        border-radius: 16px;
+        padding: 1rem 1.05rem .9rem;
+        margin: 1rem 0 .8rem;
+        box-shadow: 0 5px 18px rgba(16, 36, 62, .045);
+    }
+    .workflow-head { display: flex; justify-content: space-between; gap: 1rem; align-items: baseline; }
+    .workflow-head strong { color: var(--energy-ink); }
+    .workflow-head span { color: var(--energy-muted); font-size: .86rem; }
+    .workflow-steps { display: grid; grid-template-columns: repeat(5, 1fr); gap: .55rem; margin-top: .85rem; }
+    .workflow-step {
+        border-top: 4px solid #d8e0e8;
+        color: #788494;
+        padding: .52rem .2rem 0;
+        font-size: .78rem;
+        font-weight: 650;
+    }
+    .workflow-step.done { border-color: var(--energy-teal); color: #17696b; }
+    .workflow-step.active { border-color: var(--energy-gold); color: var(--energy-ink); }
+
+    div[data-testid="stExpander"] {
+        background: rgba(255,255,255,.92);
+        border: 1px solid var(--energy-line);
+        border-radius: 15px;
+        box-shadow: 0 5px 18px rgba(16, 36, 62, .04);
+        overflow: hidden;
+    }
+    div[data-testid="stFileUploader"] section {
+        border: 1.5px dashed #9fb4c7;
+        border-radius: 14px;
+        background: var(--energy-surface);
+    }
+    div[data-testid="stMetric"] {
+        background: #ffffff;
+        border: 1px solid var(--energy-line);
+        border-radius: 14px;
+        padding: .9rem 1rem;
+        box-shadow: 0 5px 16px rgba(16, 36, 62, .045);
+    }
+    div[data-testid="stMetricLabel"] { color: var(--energy-muted); }
+    div[data-testid="stMetricValue"] { color: var(--energy-navy); }
+    .stButton > button, .stDownloadButton > button {
+        min-height: 2.8rem;
+        border-radius: 10px;
+        font-weight: 700;
+    }
+    .stButton > button[kind="primary"] {
+        border: 0;
+        background: linear-gradient(100deg, var(--energy-blue), var(--energy-teal));
+        box-shadow: 0 7px 18px rgba(29, 95, 143, .18);
+    }
+    button[data-baseweb="tab"] { font-weight: 700; }
+    div[data-testid="stDataFrame"] { border: 1px solid var(--energy-line); border-radius: 12px; overflow: hidden; }
+    .energy-note {
+        border-left: 4px solid var(--energy-gold);
+        background: #fffaf0;
+        border-radius: 0 12px 12px 0;
+        color: #57481f;
+        padding: .85rem 1rem;
+        margin: .5rem 0 1rem;
+        font-size: .9rem;
+    }
+    .energy-footer {
+        border-top: 1px solid var(--energy-line);
+        color: var(--energy-muted);
+        font-size: .82rem;
+        margin-top: 2.5rem;
+        padding-top: 1rem;
+        text-align: center;
+    }
+
+    @media (max-width: 760px) {
+        .block-container { padding: .8rem .75rem 2.5rem; }
+        .energy-hero { padding: 1.45rem 1.25rem; border-radius: 16px; }
+        .energy-hero h1 { font-size: 2rem; }
+        .workflow-steps { grid-template-columns: 1fr; gap: .25rem; }
+        .workflow-step { border-top: 0; border-left: 4px solid #d8e0e8; padding: .35rem 0 .35rem .65rem; }
+        .workflow-head { display: block; }
+    }
+</style>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+def show_product_header() -> None:
+    st.markdown(
+        """
+<section class="energy-hero">
+  <div class="energy-eyebrow">● ICT30016 · Energy forecasting workspace</div>
+  <h1>Explainable energy forecasting, from data to decision.</h1>
+  <p>Prepare an energy time series, compare transparent forecasting models and export reproducible evidence through one guided workflow.</p>
+  <div class="hero-badges">
+    <span class="hero-badge">AEMO demand</span>
+    <span class="hero-badge">Ausgrid solar PV</span>
+    <span class="hero-badge">Custom CSV</span>
+    <span class="hero-badge">XGBoost + LSTM</span>
+  </div>
+</section>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+def show_section_heading(step: str, title: str, copy: str) -> None:
+    st.markdown(
+        f'<div class="section-label">{step}</div>'
+        f'<div class="section-title">{title}</div>'
+        f'<div class="section-copy">{copy}</div>',
+        unsafe_allow_html=True,
+    )
+
+
 def case_label(case: str) -> str:
     if case in CASE_LABELS:
         return CASE_LABELS[case]
@@ -190,12 +408,27 @@ def workflow_status(upload_ready: bool) -> tuple[int, str]:
 
 def show_workflow_progress(upload_ready: bool) -> None:
     step, message = workflow_status(upload_ready)
-    st.markdown("**Workflow**")
-    st.progress(step / 5, text=f"Step {step} of 5 — {message}")
-    st.caption(
-        "1 Upload  →  2 Validate  →  3 Select dataset  →  "
-        "4 Run models  →  5 Compare and export"
+    labels = ("Upload", "Validate", "Select", "Model", "Review")
+    rendered_steps = []
+    for index, label in enumerate(labels, start=1):
+        state_class = "done" if index < step else "active" if index == step else ""
+        rendered_steps.append(
+            f'<div class="workflow-step {state_class}">{index} · {label}</div>'
+        )
+    step_markup = "".join(rendered_steps)
+    st.markdown(
+        f"""
+<div class="workflow-shell">
+  <div class="workflow-head">
+    <strong>Workflow progress</strong>
+    <span>Step {step} of 5 · {message}</span>
+  </div>
+  <div class="workflow-steps">{step_markup}</div>
+</div>
+        """,
+        unsafe_allow_html=True,
     )
+    st.progress(step / 5, text=f"Step {step} of 5")
 
 
 def forecast_chart(case: str, frame: pd.DataFrame, model_name: str) -> alt.Chart:
@@ -359,15 +592,19 @@ def model_summary_cards(case: str, comparison: pd.DataFrame, results: dict) -> N
     )
 
 
-st.set_page_config(page_title="Explainable energy forecasting platform", layout="wide")
-st.title("Explainable energy forecasting platform")
-st.write(
-    "Upload an approved-schema energy time series or use the documented Australian "
-    "sources, then validate, compare, explain and export forecasts in one workflow."
+st.set_page_config(
+    page_title="Explainable energy forecasting platform",
+    page_icon="⚡",
+    layout="wide",
+    initial_sidebar_state="collapsed",
 )
-st.info(
-    "This prototype performs one-step historical forecasting. Validation supports "
-    "model development; the reserved test partition remains untouched until final evaluation."
+apply_interface_theme()
+show_product_header()
+st.markdown(
+    """
+<div class="energy-note"><strong>Evaluation safeguard:</strong> Validation supports model development. The reserved test partition remains untouched until the team confirms the final model settings.</div>
+    """,
+    unsafe_allow_html=True,
 )
 
 with st.expander("Source files, forecasting rules and metric definitions"):
@@ -380,10 +617,37 @@ with st.expander("Source files, forecasting rules and metric definitions"):
 - **MAPE:** positive-actual MAPE excludes zero PV targets. MAE and RMSE include every valid target.
 """)
 
+show_section_heading(
+    "Get started",
+    "Choose a data source",
+    "Use the documented Australian datasets or map your own regular energy time series.",
+)
 input_mode = st.radio(
     "Input method",
     ("Prepared Australian sources", "Custom CSV"),
     horizontal=True,
+    label_visibility="collapsed",
+)
+prepared_class = "selected" if input_mode == "Prepared Australian sources" else ""
+custom_class = "selected" if input_mode == "Custom CSV" else ""
+prepared_card, custom_card = st.columns(2)
+prepared_card.markdown(
+    f"""
+<div class="mode-card {prepared_class}">
+  <strong>Australian reference sources</strong>
+  <span>Reproduce the documented AEMO demand and Ausgrid solar-PV forecasting cases from their original ZIP archives.</span>
+</div>
+    """,
+    unsafe_allow_html=True,
+)
+custom_card.markdown(
+    f"""
+<div class="mode-card {custom_class}">
+  <strong>Custom energy CSV</strong>
+  <span>Upload a regular time series, map the timestamp and target, then optionally add known numeric covariates.</span>
+</div>
+    """,
+    unsafe_allow_html=True,
 )
 
 with st.expander(
@@ -395,6 +659,10 @@ with st.expander(
     custom_file = None
     custom_configuration = None
     if input_mode == "Prepared Australian sources":
+        st.caption(
+            "For the reproducible client demonstration, select all 12 consecutive "
+            "AEMO monthly archives together and the single Ausgrid archive."
+        )
         aemo_files = st.file_uploader(
             "Upload 12 AEMO monthly ZIP archives",
             type="zip",
@@ -414,6 +682,22 @@ with st.expander(
             st.warning(f"Select exactly 12 AEMO monthly archives; currently {aemo_count} selected.")
         upload_ready = bool(aemo_files and ausgrid_file)
     else:
+        template_column, guidance_column = st.columns([1, 2])
+        template_column.download_button(
+            "Download CSV template",
+            data=(
+                "timestamp,energy_kwh,temperature_c\n"
+                "2026-01-01T00:00:00+10:00,0.42,21.5\n"
+                "2026-01-01T00:30:00+10:00,0.47,21.2\n"
+            ).encode("utf-8"),
+            file_name="energy_forecast_template.csv",
+            mime="text/csv",
+            width="stretch",
+        )
+        guidance_column.markdown(
+            "**Minimum structure:** one timestamp column, one non-negative energy "
+            "target and enough regular observations for chronological splitting."
+        )
         custom_file = st.file_uploader(
             "Upload an approved-schema energy CSV",
             type="csv",
@@ -500,7 +784,11 @@ if st.button(
 
 if "prepared" in st.session_state:
     st.divider()
-    st.subheader("2. Select a forecasting case")
+    show_section_heading(
+        "Step 2",
+        "Select a forecasting case",
+        "Review the chronological split before training or comparing models.",
+    )
     if st.session_state.get("active_case") not in st.session_state["prepared"]:
         st.session_state["active_case"] = next(iter(st.session_state["prepared"]))
     case = st.selectbox(
@@ -521,7 +809,11 @@ if "prepared" in st.session_state:
 
     results = st.session_state["results"][case]
     final_locked = case in st.session_state.get("final_results", {})
-    st.subheader("3. Run validation models")
+    show_section_heading(
+        "Step 3",
+        "Run validation models",
+        "Train XGBoost and LSTM on the same evidence and compare them with transparent baselines.",
+    )
     completion_notice = st.session_state.pop("completion_notice", None)
     if completion_notice and completion_notice["case"] == case:
         st.success(
@@ -592,7 +884,11 @@ if "prepared" in st.session_state:
         final_results=completed_final,
     )
 
-    st.subheader("4. Review and export results")
+    show_section_heading(
+        "Steps 4–5",
+        "Review, explain and export",
+        "Compare model quality, inspect forecast behaviour and download reproducible evidence.",
+    )
     overview_tab, forecast_tab, explain_tab, final_tab, downloads_tab = st.tabs([
         "Overview", "Forecasts", "Explainability (XGBoost)", "Final test", "Downloads"
     ])
@@ -711,3 +1007,10 @@ if "prepared" in st.session_state:
             mime="application/json",
             width="stretch",
         )
+
+st.markdown(
+    """
+<div class="energy-footer">ICT30016 Innovation Project · Explainable energy forecasting prototype · Results support analysis and are not operational dispatch advice.</div>
+    """,
+    unsafe_allow_html=True,
+)
