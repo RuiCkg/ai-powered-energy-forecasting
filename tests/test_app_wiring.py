@@ -72,11 +72,17 @@ class AppWiringTest(unittest.TestCase):
 
     def test_model_completion_refreshes_status_without_duplicate_button_rows(self):
         self.assertIn('st.session_state["completion_notice"]', APP_SOURCE)
+        self.assertIn('result["training_seconds"]', APP_SOURCE)
         self.assertIn("on_click=run_validation_model", APP_SOURCE)
         self.assertEqual(APP_SOURCE.count('key=f"model_card_{model_name}_{case}"'), 1)
         callback_start = APP_SOURCE.find("def run_validation_model")
         callback_end = APP_SOURCE.find("def run_final_evaluation", callback_start)
         self.assertNotIn("st.rerun()", APP_SOURCE[callback_start:callback_end])
+
+    def test_results_support_a_fresh_analysis_and_label_demo_limitations(self):
+        self.assertIn("def reset_analysis()", APP_SOURCE)
+        self.assertIn('"Start a new analysis"', APP_SOURCE)
+        self.assertIn("Demo results are illustrative", APP_SOURCE)
 
 
 if __name__ == "__main__":

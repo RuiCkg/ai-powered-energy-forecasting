@@ -5,6 +5,7 @@ from __future__ import annotations
 import io
 import json
 import sys
+import time
 from pathlib import Path
 
 import altair as alt
@@ -261,12 +262,15 @@ def run_validation_model(case: str, model_name: str) -> None:
         "LSTM": fit_and_validate_lstm,
     }
     try:
+        started_at = time.perf_counter()
         with st.spinner(messages[model_name]):
-            st.session_state["results"][case][model_name] = trainers[model_name](
+            result = trainers[model_name](
                 parts,
                 case,
                 include_preview=True,
             )
+            result["training_seconds"] = time.perf_counter() - started_at
+            st.session_state["results"][case][model_name] = result
         st.session_state["completion_notice"] = {
             "case": case,
             "model": model_name,
@@ -367,6 +371,26 @@ def set_workflow_stage(stage: int) -> None:
     """Move between the three user-facing workflow screens."""
 
     st.session_state["workflow_stage"] = stage
+
+
+def reset_analysis() -> None:
+    """Clear transient analysis state and return to the data screen."""
+
+    for key in (
+        "prepared",
+        "prepared_input_mode",
+        "upload_evidence",
+        "results",
+        "final_results",
+        "active_case",
+        "completion_notice",
+        "model_error",
+        "final_notice",
+        "final_error",
+        "data_ready_notice",
+    ):
+        st.session_state.pop(key, None)
+    st.session_state["workflow_stage"] = 1
 
 
 def show_workflow_navigation(stage: int, data_ready: bool, results_ready: bool) -> None:
@@ -545,7 +569,8 @@ def model_summary_cards(case: str, comparison: pd.DataFrame, results: dict) -> N
     decimals = metric_decimals_for(case)
     first, second, third, fourth = st.columns(4)
     first.metric("Best model by MAE", best_row["Approach"])
-    second.metric("MAE", f"{best_row['MAE']:.{decimals}f} {unit_for(case)}")
+    second.metric("MAE", f"{best_row['MAE']:.{decimals}f}")
+    second.caption(unit_for(case))
     third.metric("vs persistence", f"{improvement:.1f}% lower")
     fourth.metric("Validation targets", f"{int(best_row['Validation targets']):,}")
     st.caption(
@@ -733,6 +758,10 @@ if stage == 1:
                 except (ValueError, pd.errors.ParserError) as error:
                     upload_ready = False
                     st.error(f"CSV inspection failed: {error}")
+                    st.caption(
+                        "Check that the file is UTF-8 CSV with one header row, "
+                        "parseable timestamps and numeric energy values."
+                    )
 
     button_disabled = not upload_ready or (
         input_mode == "Upload your CSV" and custom_configuration is None
@@ -853,6 +882,9 @@ elif stage == 2:
                 metric_left.metric("MAE", f"{metrics['MAE']:.{metric_decimals_for(case)}f}")
                 metric_right.metric("RMSE", f"{metrics['RMSE']:.{metric_decimals_for(case)}f}")
                 st.success("Validation complete")
+                duration = results[model_name].get("training_seconds")
+                if duration is not None:
+                    st.caption(f"Completed in {duration:.1f} seconds on this session.")
             else:
                 st.info("Ready to run")
             st.button(
@@ -915,11 +947,26 @@ else:
         final_results=completed_final,
     )
 
-    show_section_heading(
-        "Step 3 of 3",
-        f"Results · {case_label(case)}",
-        "Compare quality, inspect forecast behaviour and export reproducible evidence.",
-    )
+    result_heading, result_action = st.columns([4, 1], gap="large")
+    with result_heading:
+        show_section_heading(
+            "Step 3 of 3",
+            f"Results · {case_label(case)}",
+            "Compare quality, inspect forecast behaviour and export reproducible evidence.",
+        )
+    with result_action:
+        st.write("")
+        st.button(
+            "Start a new analysis",
+            key="reset_analysis",
+            width="stretch",
+            on_click=reset_analysis,
+        )
+    if st.session_state.get("prepared_input_mode") == "Try demo data":
+        st.info(
+            "Demo results are illustrative and do not represent expected real-world "
+            "performance. Use an approved real dataset for project evidence."
+        )
     overview_tab, forecast_tab, explain_tab, final_tab, downloads_tab = st.tabs([
         "Overview", "Forecasts", "Explainability (XGBoost)", "Final test", "Downloads"
     ])

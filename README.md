@@ -17,9 +17,11 @@ Run the local guided dashboard from this repository:
 python -m streamlit run streamlit_app.py
 ```
 
-Open the address printed by Streamlit and choose an input method. For the prepared Australian cases, upload the **12 documented AEMO monthly ZIPs** (August 2025-July 2026) and the Ausgrid solar-home ZIP. For a custom case, upload a regular UTF-8 CSV and map its fields. Run both models, compare MAE/RMSE/positive-actual MAPE and residuals, review XGBoost SHAP, then export evidence. Training the CPU LSTM can take several minutes. Use the reserved-test action only after model settings are final.
+Open the address printed by Streamlit and follow the three screens: **Data**, **Models** and **Results**. Start with the labelled synthetic demo, upload a regular UTF-8 CSV and map its fields, or use the advanced benchmark path with the **12 documented AEMO monthly ZIPs** (August 2025-July 2026) and the Ausgrid solar-home ZIP. Run both models, compare MAE/RMSE/positive-actual MAPE, review XGBoost SHAP and export the evidence. Demo scores are illustrative rather than evidence of expected real-world performance. Training the CPU LSTM and the first cloud start can take longer than subsequent interactions. Use the reserved-test action only after model settings are final.
 
 ## Streamlit Community Cloud deployment
+
+Current deployment: [ICT30016 AI Energy Forecasting](https://ict30016-ai-energy-forecasting.streamlit.app/)
 
 1. Push the repository to GitHub without raw datasets.
 2. In Streamlit Community Cloud, create an app from the repository and select `streamlit_app.py` as the entry point.
