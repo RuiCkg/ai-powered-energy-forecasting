@@ -1,7 +1,7 @@
 # ai-powered-energy-forecasting
-Local prototype for separately forecasting electricity load and photovoltaic energy with reference methods, XGBoost and a small LSTM.
+Explainable prototype for forecasting electricity load or photovoltaic energy with a seasonal benchmark, XGBoost and a small LSTM.
 
-Two provisional cases use real files: AEMO `NSW1` operational demand (12 months, MW) and Ausgrid customer `1` gross PV generation (`GG`; two quality-flagged years, kWh per original half-hour source slot). Both are one-step historical **validation** backtests. Neither the operational forecast horizon nor Ausgrid daylight-saving conversion has been approved; the app is not a live prediction service. See [data-source evidence](docs/data_sources.md), [XGBoost experiment](docs/first_ml_experiment.md), [LSTM experiment](docs/lstm_experiment.md) and [MVP status](docs/mvp_status.md).
+The guided workflow accepts the two documented real-data cases or an approved-schema UTF-8 CSV. A custom CSV user maps a timestamp, a non-negative energy target and optional numeric covariates that are known at prediction time. The adapter checks chronology, duplicates, missing values and regular frequency before creating causal lag and calendar features. Every case uses one-step historical forecasting and chronological train, validation and reserved-test partitions. The app is not a live prediction service. See [requirements traceability](docs/client_requirements_traceability.md), [model cards](docs/model_cards.md), [data-source evidence](docs/data_sources.md), [XGBoost experiment](docs/first_ml_experiment.md) and [LSTM experiment](docs/lstm_experiment.md).
 
 Run the full archive, source-value, input-contract, chronology, model, explainability, security and reproducibility test suite with:
 
@@ -9,7 +9,7 @@ Run the full archive, source-value, input-contract, chronology, model, explainab
 python -m unittest discover -s tests -v
 ```
 
-Create a Python 3.12+ virtual environment, then install `requirements.txt`, `requirements-lstm.txt` and `requirements-app.txt`. On Windows, XGBoost's native library requires the Microsoft Visual C++ runtime; see the [official install instructions](https://xgboost.readthedocs.io/en/stable/install.html). Do not copy a local runtime DLL into Git.
+Create a Python 3.12+ virtual environment, then install `requirements.txt`. The two smaller requirements files remain for component-specific local setup. On Windows, XGBoost's native library requires the Microsoft Visual C++ runtime; see the [official install instructions](https://xgboost.readthedocs.io/en/stable/install.html). Do not copy a local runtime DLL into Git.
 
 Run the local guided dashboard from this repository:
 
@@ -17,7 +17,14 @@ Run the local guided dashboard from this repository:
 python -m streamlit run streamlit_app.py
 ```
 
-Open the local address printed by Streamlit, upload the **12 documented AEMO monthly ZIPs** (August 2025–July 2026) and the Ausgrid solar-home ZIP, then choose a case and train each model. The app validates source coverage, compares MAE/RMSE and positive-actual MAPE, charts all downloadable validation forecasts, and shows XGBoost's native SHAP feature contributions. Training the CPU LSTM can take several minutes. Its result is a development estimate selected on validation, not held-out final accuracy.
+Open the address printed by Streamlit and choose an input method. For the prepared Australian cases, upload the **12 documented AEMO monthly ZIPs** (August 2025-July 2026) and the Ausgrid solar-home ZIP. For a custom case, upload a regular UTF-8 CSV and map its fields. Run both models, compare MAE/RMSE/positive-actual MAPE and residuals, review XGBoost SHAP, then export evidence. Training the CPU LSTM can take several minutes. Use the reserved-test action only after model settings are final.
+
+## Streamlit Community Cloud deployment
+
+1. Push the repository to GitHub without raw datasets.
+2. In Streamlit Community Cloud, create an app from the repository and select `streamlit_app.py` as the entry point.
+3. In **Advanced settings**, select Python 3.12, then deploy with the root `requirements.txt` and `.streamlit/config.toml`.
+4. After deployment, run a custom CSV smoke test and one documented-source smoke test. Confirm XGBoost, LSTM, SHAP and all downloads before sharing the URL.
 
 Do not commit raw downloaded archives. Keep them outside this repository or under the ignored `data/` directory. Data source terms and licences must be reviewed before anyone redistributes the files. The provisional implementation should be reviewed by the team before merging it to `main` or describing it as a client-approved platform.
 

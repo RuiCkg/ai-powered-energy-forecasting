@@ -26,9 +26,10 @@ import platform
 import sys
 
 from .upload_validation import AEMO_MONTHLY_POLICY, AUSGRID_ARCHIVE_POLICY, MAX_SESSION_BYTES
+from .custom_data import MAX_CUSTOM_CSV_BYTES
 from .xgb_model import EARLY_STOPPING_ROUNDS, FEATURE_NAMES, FIXED_PARAMETERS, NUM_BOOST_ROUND
 
-RECORD_SCHEMA_VERSION = "1"
+RECORD_SCHEMA_VERSION = "2"
 
 # Packages whose version can change a reported metric. Absent packages are
 # recorded as null rather than omitted, so a record made without the LSTM
@@ -40,6 +41,7 @@ RECORDED_PACKAGES = ("numpy", "scipy", "xgboost-cpu", "xgboost", "torch", "strea
 # evidence (NFR4).
 VALUE_BEARING_KEYS = frozenset({
     "validation_prediction_rows",
+    "test_prediction_rows",
     "validation_first_local_SHAP",
     "values_kWh",
     "history_48",
@@ -194,17 +196,22 @@ def aggregate_model_result(result: dict) -> dict:
 
     keep = (
         "model",
+        "best_iteration",
+        "best_epoch",
+        "epochs_run",
+        "parameters",
+        "features",
+        "feature_names",
+        "validation_MAE_by_epoch",
         "xgboost_version",
         "torch_version",
         "fixed_parameters",
         "best_boosting_iteration_selected_on_validation",
         "best_epoch_selected_on_validation",
-        "epochs_run",
         "hidden_size",
         "optimizer",
         "max_epochs",
         "early_stop_patience_epochs",
-        "feature_names",
         "nonnegative_predictions",
         "validation_metrics",
         "validation_mean_absolute_SHAP_by_feature",
@@ -223,6 +230,7 @@ def build_experiment_record(
     split_boundaries: dict,
     part_counts: dict,
     model_results: dict,
+    final_results: dict | None = None,
 ) -> dict:
     """Assemble a replayable record for one case, and check it for source values.
 
@@ -232,32 +240,67 @@ def build_experiment_record(
     identical configuration digests produce identical metric digests.
     """
 
+    preprocessing_policy = dict(PREPROCESSING_POLICY)
+    if case == "custom":
+        preprocessing_policy.update({
+            "timestamp_policy": "user-mapped timestamp parsed to UTC; unique, strictly ordered and regular",
+            "imputation": "none; missing timestamp, target or selected covariate fails validation",
+            "seasonal_period": source_profile.get("seasonal_period_rows"),
+            "forecast_horizon": "one source interval",
+        })
+    accepted_source_digests = {
+        "aemo": [item["sha256"] for item in upload_evidence.get("aemo_uploads", [])],
+        "ausgrid": [item["sha256"] for item in upload_evidence.get("ausgrid_uploads", [])],
+        "custom": [item["sha256"] for item in upload_evidence.get("custom_uploads", [])],
+    }
+    upload_policies = (
+        [{
+            "name": "custom_csv",
+            "max_bytes": MAX_CUSTOM_CSV_BYTES,
+            "encoding": "UTF-8",
+            "required_contract": "mapped timestamp and non-negative numeric target",
+        }]
+        if case == "custom"
+        else [AEMO_MONTHLY_POLICY.describe(), AUSGRID_ARCHIVE_POLICY.describe()]
+    )
     configuration = {
         "schema_version": RECORD_SCHEMA_VERSION,
         "case": case,
         "environment": environment_fingerprint(),
         "fixed_model_configuration": fixed_model_configuration(),
-        "preprocessing_policy": dict(PREPROCESSING_POLICY),
-        "upload_policies": [AEMO_MONTHLY_POLICY.describe(), AUSGRID_ARCHIVE_POLICY.describe()],
-        "session_byte_budget": MAX_SESSION_BYTES,
-        "accepted_source_digests": {
-            "aemo": [item["sha256"] for item in upload_evidence.get("aemo_uploads", [])],
-            "ausgrid": [item["sha256"] for item in upload_evidence.get("ausgrid_uploads", [])],
-        },
+        "preprocessing_policy": preprocessing_policy,
+        "upload_policies": upload_policies,
+        "session_byte_budget": MAX_CUSTOM_CSV_BYTES if case == "custom" else MAX_SESSION_BYTES,
+        "accepted_source_digests": accepted_source_digests,
+        "schema_mapping": _serialisable(upload_evidence.get("schema_mapping", {})),
         "source_profile": _serialisable(source_profile),
         "split_boundaries": _serialisable(split_boundaries),
         "example_counts": _serialisable(part_counts),
+        "effective_model_features": {
+            name: list(result.get("feature_names", result.get("features", [])))
+            for name, result in sorted(model_results.items())
+        },
     }
     # Serialised on the way in, which also detaches the record from the caller's
     # dictionaries. A record that still shares structure with a live result is
     # not a snapshot, and evidence that can change after the fact is not
     # evidence.
     metrics = {name: _serialisable(aggregate_model_result(result)) for name, result in sorted(model_results.items())}
+    final_metrics = {
+        name: _serialisable({
+            key: value
+            for key, value in result.items()
+            if key != "test_prediction_rows"
+        })
+        for name, result in sorted((final_results or {}).items())
+    }
     record = {
         "configuration": configuration,
         "configuration_digest": digest(configuration),
         "metrics": metrics,
         "metrics_digest": digest(metrics),
+        "final_test_metrics": final_metrics,
+        "final_test_metrics_digest": digest(final_metrics),
         "replay_criterion": (
             "NFR5 is met when a replay of this configuration reproduces metrics_digest exactly. "
             "Equal configuration_digest with unequal metrics_digest is a failure, not a tolerance question."
@@ -277,15 +320,29 @@ def compare_records(first: dict, second: dict) -> dict:
 
     configuration_matches = first.get("configuration_digest") == second.get("configuration_digest")
     metrics_match = first.get("metrics_digest") == second.get("metrics_digest")
+    final_test_metrics_match = (
+        first.get("final_test_metrics_digest") == second.get("final_test_metrics_digest")
+    )
     differences: list[str] = []
     if not configuration_matches:
         differences.extend(_diff_paths(first.get("configuration"), second.get("configuration"), "configuration"))
     if not metrics_match:
         differences.extend(_diff_paths(first.get("metrics"), second.get("metrics"), "metrics"))
+    if not final_test_metrics_match:
+        differences.extend(
+            _diff_paths(
+                first.get("final_test_metrics"),
+                second.get("final_test_metrics"),
+                "final_test_metrics",
+            )
+        )
     return {
         "configuration_matches": configuration_matches,
         "metrics_match": metrics_match,
-        "replay_reproduced": bool(configuration_matches and metrics_match),
+        "final_test_metrics_match": final_test_metrics_match,
+        "replay_reproduced": bool(
+            configuration_matches and metrics_match and final_test_metrics_match
+        ),
         "differing_paths": sorted(differences),
     }
 

@@ -5,7 +5,7 @@ import unittest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 from energy_forecasting.aemo import NEM_TIME
-from energy_forecasting.xgb_model import FEATURE_NAMES, feature_row
+from energy_forecasting.xgb_model import FEATURE_NAMES, feature_names_for, feature_row
 
 
 class XgbFeaturesTest(unittest.TestCase):
@@ -15,6 +15,17 @@ class XgbFeaturesTest(unittest.TestCase):
         pv = {"key": (date(2013, 1, 1), 2), "lag_1": 0, "lag_48": 0.5}
         self.assertEqual(feature_row(pv, "ausgrid"), [0.0, 0.5, 2.0, 1.0, 1.0])
         self.assertEqual(len(FEATURE_NAMES), 5)
+
+    def test_custom_case_adds_known_covariates(self):
+        example = {
+            "key": datetime(2026, 4, 1, 4, 30),
+            "lag_1": 10,
+            "lag_48": 20,
+            "target_slot": 9,
+            "custom_covariates": {"temperature": 22.5},
+        }
+        self.assertEqual(feature_row(example, "custom"), [10.0, 20.0, 9.0, 2.0, 4.0, 22.5])
+        self.assertEqual(feature_names_for([example], "custom")[-2:], ["month", "temperature"])
 
 
 if __name__ == "__main__":

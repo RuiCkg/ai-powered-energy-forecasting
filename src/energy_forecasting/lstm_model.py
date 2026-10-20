@@ -29,19 +29,26 @@ def calendar_fields(example: dict, case: str) -> list[float]:
     """Cyclic encodings of the known target slot, weekday and month (no target value)."""
 
     key = example["key"]
-    if case == "aemo":
+    if case in {"aemo", "custom"}:
         if not isinstance(key, datetime):
-            raise ValueError("AEMO example key must be a timestamp")
-        slot, day = key.hour * 2 + key.minute // 30, key.date()
+            raise ValueError(f"{case} example key must be a timestamp")
+        slot = example.get("target_slot", key.hour * 2 + key.minute // 30)
+        day = key.date()
     elif case == "ausgrid":
         day, slot = key
         slot -= 1
     else:
         raise ValueError(f"Unknown case: {case}")
+    slot_period = int(example.get("slots_per_season", 48))
     fields = []
-    for value, period in ((slot, 48), (day.weekday(), 7), (day.month - 1, 12)):
+    for value, period in ((slot, slot_period), (day.weekday(), 7), (day.month - 1, 12)):
         angle = 2 * math.pi * value / period
         fields.extend([math.sin(angle), math.cos(angle)])
+    if case == "custom":
+        fields.extend(
+            float(value)
+            for _, value in sorted(example.get("custom_covariates", {}).items())
+        )
     return fields
 
 
@@ -68,6 +75,13 @@ def fit_and_validate_lstm(parts: dict, case: str, include_preview: bool = False)
     h_train, c_train, y_train = arrays(parts["train"])
     h_val, c_val, y_val = arrays(parts["validation"])
     mean, std = float(h_train.mean()), float(h_train.std()) or 1.0  # train-only normalisation
+
+    if case == "custom":
+        calendar_mean = c_train.mean(axis=0)
+        calendar_std = c_train.std(axis=0)
+        calendar_std[calendar_std == 0] = 1.0
+        c_train = (c_train - calendar_mean) / calendar_std
+        c_val = (c_val - calendar_mean) / calendar_std
 
     def scale(history):
         return torch.tensor((history - mean) / std).unsqueeze(-1)
@@ -132,8 +146,107 @@ def fit_and_validate_lstm(parts: dict, case: str, include_preview: bool = False)
             "hidden_units": HIDDEN_UNITS, "layers": 1, "learning_rate": LEARNING_RATE,
             "batch_size": BATCH_SIZE, "max_epochs": MAX_EPOCHS, "patience": PATIENCE, "seed": SEED,
         },
+        "feature_names": [
+            "history_window",
+            "slot_sin", "slot_cos", "weekday_sin", "weekday_cos", "month_sin", "month_cos",
+            *(
+                sorted(parts["train"][0].get("custom_covariates", {}))
+                if case == "custom" else []
+            ),
+        ],
     }
     result["validation_prediction_rows"] = (
         preview_predictions(parts["validation"], predictions, limit=len(predictions)) if include_preview else []
+    )
+    return result
+
+
+def fit_and_evaluate_test_lstm(
+    parts: dict,
+    case: str,
+    epochs: int,
+    include_preview: bool = False,
+) -> dict:
+    """Retrain for the validation-selected epoch count and score reserved test."""
+
+    try:
+        import numpy as np
+        import torch
+        from torch import nn
+    except ImportError as error:
+        raise RuntimeError(f"LSTM dependencies are not installed: {error}") from error
+    if not isinstance(epochs, int) or epochs < 1:
+        raise ValueError("Final LSTM epoch count must be a positive integer")
+
+    torch.manual_seed(SEED)
+    np.random.seed(SEED)
+    torch.set_num_threads(2)
+    development = list(parts["train"]) + list(parts["validation"])
+
+    def arrays(examples):
+        history = np.array([example["history_48"] for example in examples], dtype=np.float32)
+        calendar = np.array([calendar_fields(example, case) for example in examples], dtype=np.float32)
+        target = np.array([example["target"] for example in examples], dtype=np.float32)
+        return history, calendar, target
+
+    h_development, c_development, y_development = arrays(development)
+    h_test, c_test, y_test = arrays(parts["test"])
+    mean = float(h_development.mean())
+    std = float(h_development.std()) or 1.0
+    if case == "custom":
+        calendar_mean = c_development.mean(axis=0)
+        calendar_std = c_development.std(axis=0)
+        calendar_std[calendar_std == 0] = 1.0
+        c_development = (c_development - calendar_mean) / calendar_std
+        c_test = (c_test - calendar_mean) / calendar_std
+
+    def scale(history):
+        return torch.tensor((history - mean) / std).unsqueeze(-1)
+
+    x_development, x_test = scale(h_development), scale(h_test)
+    c_development_t, c_test_t = torch.tensor(c_development), torch.tensor(c_test)
+    t_development = torch.tensor((y_development - mean) / std)
+
+    class Net(nn.Module):
+        def __init__(self):
+            super().__init__()
+            self.lstm = nn.LSTM(input_size=1, hidden_size=HIDDEN_UNITS, num_layers=1, batch_first=True)
+            self.head = nn.Linear(HIDDEN_UNITS + c_development.shape[1], 1)
+
+        def forward(self, sequence, calendar):
+            output, _ = self.lstm(sequence)
+            return self.head(torch.cat([output[:, -1, :], calendar], dim=1)).squeeze(-1)
+
+    model = Net()
+    optimizer = torch.optim.Adam(model.parameters(), lr=LEARNING_RATE)
+    loss_fn = nn.MSELoss()
+    generator = torch.Generator().manual_seed(SEED)
+    for _ in range(epochs):
+        model.train()
+        order = torch.randperm(len(x_development), generator=generator)
+        for start in range(0, len(order), BATCH_SIZE):
+            batch = order[start:start + BATCH_SIZE]
+            optimizer.zero_grad()
+            loss = loss_fn(model(x_development[batch], c_development_t[batch]), t_development[batch])
+            loss.backward()
+            optimizer.step()
+
+    model.eval()
+    with torch.no_grad():
+        scaled = torch.cat([
+            model(x_test[index:index + BATCH_SIZE], c_test_t[index:index + BATCH_SIZE])
+            for index in range(0, len(x_test), BATCH_SIZE)
+        ]).numpy()
+    predictions = [float(value) for value in np.maximum(0.0, scaled * std + mean)]
+    result = {
+        "model": "LSTM",
+        "test_metrics": evaluate_predictions(parts["test"], predictions),
+        "epochs_selected_on_validation": epochs,
+        "training_partition": "train plus validation",
+        "evaluation_partition": "reserved test",
+    }
+    result["test_prediction_rows"] = (
+        preview_predictions(parts["test"], predictions, limit=len(predictions))
+        if include_preview else []
     )
     return result

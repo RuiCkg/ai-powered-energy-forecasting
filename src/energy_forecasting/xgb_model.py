@@ -48,15 +48,15 @@ SHAP_ADDITIVITY_TOLERANCE = 1e-3
 # --------------------------------------------------
 
 def feature_row(example: dict, case: str) -> list[float]:
-    """Prepare five causal features for XGBoost."""
+    """Prepare causal lag, calendar and optional known-covariate features."""
 
     key = example["key"]
 
-    if case == "aemo":
+    if case in {"aemo", "custom"}:
         if not isinstance(key, datetime):
-            raise ValueError("AEMO example key must be a timestamp")
+            raise ValueError(f"{case} example key must be a timestamp")
 
-        slot = key.hour * 2 + key.minute // 30
+        slot = example.get("target_slot", key.hour * 2 + key.minute // 30)
         day = key.date()
 
     elif case == "ausgrid":
@@ -65,13 +65,31 @@ def feature_row(example: dict, case: str) -> list[float]:
     else:
         raise ValueError(f"Unknown case: {case}")
 
-    return [
+    row = [
         float(example["lag_1"]),
         float(example["lag_48"]),
         float(slot),
         float(day.weekday()),
         float(day.month),
     ]
+    if case == "custom":
+        row.extend(
+            float(value)
+            for _, value in sorted(example.get("custom_covariates", {}).items())
+        )
+    return row
+
+
+def feature_names_for(examples: list[dict], case: str) -> list[str]:
+    """Return the matrix column names for a forecasting case."""
+
+    names = list(FEATURE_NAMES)
+    if case == "custom":
+        names[1] = "lag_seasonal"
+        if not examples:
+            raise ValueError("No custom examples were provided")
+        names.extend(sorted(examples[0].get("custom_covariates", {})))
+    return names
 
 
 # --------------------------------------------------
@@ -208,19 +226,20 @@ def fit_and_validate(
         ) from error
 
     # Prepare training and validation data
+    feature_names = feature_names_for(parts["train"], case)
     x_train, y_train = _matrix(parts["train"], case)
     x_val, y_val = _matrix(parts["validation"], case)
 
     train = xgb.DMatrix(
         x_train,
         label=y_train,
-        feature_names=FEATURE_NAMES,
+        feature_names=feature_names,
     )
 
     validation = xgb.DMatrix(
         x_val,
         label=y_val,
-        feature_names=FEATURE_NAMES,
+        feature_names=feature_names,
     )
 
     # Train model
@@ -278,7 +297,7 @@ def fit_and_validate(
             f"Maximum scaled error: {shap_error:.8f}"
         )
 
-    mean_abs = global_feature_importance(contributions).reindex(FEATURE_NAMES)
+    mean_abs = global_feature_importance(contributions).reindex(feature_names)
     first = local_explanation(contributions)
 
     # --------------------------------------------------
@@ -299,7 +318,8 @@ def fit_and_validate(
             "early_stopping_rounds": EARLY_STOPPING_ROUNDS,
         },
 
-        "features": FEATURE_NAMES,
+        "features": feature_names,
+        "feature_names": feature_names,
 
         "validation_mean_absolute_SHAP_by_feature": {
             name: float(value)
@@ -332,4 +352,42 @@ def fit_and_validate(
         else []
     )
 
+    return result
+
+
+def fit_and_evaluate_test(
+    parts: dict,
+    case: str,
+    num_boost_round: int,
+    include_preview: bool = False,
+) -> dict:
+    """Retrain on train+validation and evaluate the untouched test partition."""
+
+    try:
+        import xgboost as xgb
+    except ImportError as error:
+        raise RuntimeError(f"XGBoost dependencies are not installed: {error}") from error
+    if not isinstance(num_boost_round, int) or num_boost_round < 1:
+        raise ValueError("Final XGBoost tree count must be a positive integer")
+
+    development = list(parts["train"]) + list(parts["validation"])
+    feature_names = feature_names_for(development, case)
+    x_development, y_development = _matrix(development, case)
+    x_test, y_test = _matrix(parts["test"], case)
+    train = xgb.DMatrix(x_development, label=y_development, feature_names=feature_names)
+    test = xgb.DMatrix(x_test, label=y_test, feature_names=feature_names)
+    booster = xgb.train(PARAMS, train, num_boost_round=num_boost_round, verbose_eval=False)
+    predictions = [max(0.0, float(value)) for value in booster.predict(test)]
+    result = {
+        "model": "XGBoost",
+        "test_metrics": evaluate_predictions(parts["test"], predictions),
+        "num_boost_round_selected_on_validation": num_boost_round,
+        "feature_names": feature_names,
+        "training_partition": "train plus validation",
+        "evaluation_partition": "reserved test",
+    }
+    result["test_prediction_rows"] = (
+        preview_predictions(parts["test"], predictions, limit=len(predictions))
+        if include_preview else []
+    )
     return result

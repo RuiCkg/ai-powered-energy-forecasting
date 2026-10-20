@@ -16,7 +16,7 @@ def forecast_plot_timestamp(case: str, target_key: str) -> datetime:
     ``YYYY-MM-DD slot NN`` label, where each slot represents 30 minutes.
     """
 
-    if case == "aemo":
+    if case in {"aemo", "custom"}:
         return datetime.fromisoformat(target_key)
 
     if case == "ausgrid":

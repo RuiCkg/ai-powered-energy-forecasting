@@ -19,6 +19,10 @@ class ForecastPlotTimestampTest(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "Invalid Ausgrid target key"):
             forecast_plot_timestamp("ausgrid", "2012-07-01")
 
+    def test_custom_iso_timestamp_is_preserved(self):
+        result = forecast_plot_timestamp("custom", "2026-04-01T04:30:00+00:00")
+        self.assertEqual(result.isoformat(), "2026-04-01T04:30:00+00:00")
+
 
 if __name__ == "__main__":
     unittest.main()

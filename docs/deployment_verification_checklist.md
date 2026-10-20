@@ -1,5 +1,7 @@
 # Deployment Verification Checklist for Security Implementation
 
+> **Current platform status (20 October 2026):** this document records security and reproducibility verification, not completion of public or production deployment. A public Streamlit URL, cloud smoke test, monitoring and client acceptance are still required.
+
 **Document Purpose:** Comprehensive verification checklist for security validation framework deployment. Covers all 8 phases of deployment verification, from unit test coverage through end-to-end integration testing, NFR compliance, and production readiness.
 
 **Status:** All 48 security tests passing (17 upload validation + 20 experiment record + 6 SHAP additivity + 5 app wiring)

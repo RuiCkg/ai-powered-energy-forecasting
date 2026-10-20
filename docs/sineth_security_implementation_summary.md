@@ -1,4 +1,6 @@
 # Security Implementation Summary
+
+> **Current platform status (20 October 2026):** the security increment is complete, but the complete forecasting platform is not production-deployed. Public deployment, cloud smoke testing, operational monitoring and client acceptance remain separate release gates.
 ## Sineth Sundeepam Munasinghe (Student ID: 104796837)
 
 **Date Completed:** 6 October 2026  

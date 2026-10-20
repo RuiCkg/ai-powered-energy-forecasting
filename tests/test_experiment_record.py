@@ -7,6 +7,7 @@ and a record carrying per-row readings must be refused outright.
 """
 
 from datetime import datetime, timedelta, timezone
+from copy import deepcopy
 from pathlib import Path
 import sys
 import unittest
@@ -155,6 +156,31 @@ class ReplayComparisonTest(unittest.TestCase):
         second["metrics"]["XGBoost"]["validation_metrics"]["MAE"] = 91.31250000001
         second["metrics_digest"] = digest(second["metrics"])
         self.assertFalse(compare_records(first, second)["replay_reproduced"])
+
+    def test_a_changed_final_test_metric_fails_the_replay(self):
+        final = {
+            "XGBoost": {
+                "model": "XGBoost",
+                "test_metrics": {"MAE": 88.0},
+                "test_prediction_rows": [{"actual": 1.0, "predicted": 1.0}],
+            }
+        }
+        first = build_experiment_record(
+            "aemo", UPLOAD_EVIDENCE, SOURCE_PROFILE, SPLIT_BOUNDARIES,
+            PART_COUNTS, MODEL_RESULTS, final,
+        )
+        changed = deepcopy(final)
+        changed["XGBoost"]["test_metrics"]["MAE"] = 89.0
+        second = build_experiment_record(
+            "aemo", UPLOAD_EVIDENCE, SOURCE_PROFILE, SPLIT_BOUNDARIES,
+            PART_COUNTS, MODEL_RESULTS, changed,
+        )
+        outcome = compare_records(first, second)
+        self.assertFalse(outcome["final_test_metrics_match"])
+        self.assertFalse(outcome["replay_reproduced"])
+        self.assertIn(
+            "final_test_metrics.XGBoost.test_metrics.MAE", outcome["differing_paths"]
+        )
 
     def test_a_changed_source_digest_fails_the_configuration_comparison(self):
         first = a_record()

@@ -29,7 +29,9 @@ class AppWiringTest(unittest.TestCase):
     def test_a_rejection_clears_any_previously_prepared_state(self):
         """A refused upload must not leave an earlier accepted run on screen."""
 
-        block = APP_SOURCE[APP_SOURCE.find("except UploadRejected"):APP_SOURCE.find("except (ValueError")]
+        start = APP_SOURCE.find("except UploadRejected")
+        end = APP_SOURCE.find("except (ValueError", start)
+        block = APP_SOURCE[start:end]
         self.assertIn('st.session_state.pop("prepared", None)', block)
         self.assertIn('st.session_state.pop("upload_evidence", None)', block)
 
