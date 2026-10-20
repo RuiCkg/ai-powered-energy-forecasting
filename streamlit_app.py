@@ -16,7 +16,6 @@ sys.path.insert(0, str(Path(__file__).resolve().parent / "src"))
 
 from energy_forecasting.baseline import evaluate_persistence, evaluate_seasonal_naive
 from energy_forecasting.custom_data import (
-    build_synthetic_demo_csv,
     infer_daily_seasonal_period,
     inspect_custom_csv,
     prepare_custom_csv,
@@ -25,6 +24,7 @@ from energy_forecasting.dashboard import forecast_plot_timestamp
 from energy_forecasting.demo_data import prepare_uploaded_sources
 from energy_forecasting.experiment_record import build_experiment_record
 from energy_forecasting.lstm_model import fit_and_evaluate_test_lstm, fit_and_validate_lstm
+from energy_forecasting.synthetic_demo import build_synthetic_demo_csv
 from energy_forecasting.upload_validation import UploadRejected, validate_documented_sources
 from energy_forecasting.xgb_model import fit_and_evaluate_test, fit_and_validate
 

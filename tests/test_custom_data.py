@@ -8,11 +8,11 @@ import pandas as pd
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 from energy_forecasting.custom_data import (
-    build_synthetic_demo_csv,
     infer_daily_seasonal_period,
     inspect_custom_csv,
     prepare_custom_csv,
 )
+from energy_forecasting.synthetic_demo import build_synthetic_demo_csv
 
 
 def sample_csv(rows: int = 160) -> bytes:
