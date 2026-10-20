@@ -47,7 +47,9 @@ class AppWiringTest(unittest.TestCase):
         self.assertIn("validate_documented_sources", APP_SOURCE)
 
     def test_the_user_journey_has_progress_and_result_sections(self):
-        self.assertIn('class="workflow-steps"', APP_SOURCE)
+        self.assertIn("show_workflow_navigation(stage, data_ready, results_ready)", APP_SOURCE)
+        for label in ("Prepare data", "Run and compare models", "Review results"):
+            self.assertIn(f'"{label}"', APP_SOURCE)
         for mode in ("Try demo data", "Upload your CSV", "Official benchmark · Advanced"):
             self.assertIn(f'"{mode}"', APP_SOURCE)
         self.assertIn('prepared = {"custom": demo_case}', APP_SOURCE)
@@ -71,9 +73,10 @@ class AppWiringTest(unittest.TestCase):
     def test_model_completion_refreshes_status_without_duplicate_button_rows(self):
         self.assertIn('st.session_state["completion_notice"]', APP_SOURCE)
         self.assertIn("on_click=run_validation_model", APP_SOURCE)
-        self.assertEqual(APP_SOURCE.count('key=f"xgb_{case}"'), 1)
-        self.assertEqual(APP_SOURCE.count('key=f"lstm_{case}"'), 1)
-        self.assertNotIn("st.rerun()", APP_SOURCE)
+        self.assertEqual(APP_SOURCE.count('key=f"model_card_{model_name}_{case}"'), 1)
+        callback_start = APP_SOURCE.find("def run_validation_model")
+        callback_end = APP_SOURCE.find("def run_final_evaluation", callback_start)
+        self.assertNotIn("st.rerun()", APP_SOURCE[callback_start:callback_end])
 
 
 if __name__ == "__main__":

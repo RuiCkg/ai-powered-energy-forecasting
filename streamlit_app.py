@@ -123,28 +123,6 @@ def apply_interface_theme() -> None:
     .section-title { color: var(--energy-ink); font-size: 1.45rem; font-weight: 750; margin: 0 0 .2rem; }
     .section-copy { color: var(--energy-muted); margin: 0 0 .85rem; }
 
-    .workflow-shell {
-        border: 1px solid var(--energy-line);
-        background: #ffffff;
-        border-radius: 16px;
-        padding: 1rem 1.05rem .9rem;
-        margin: 1rem 0 .8rem;
-        box-shadow: 0 5px 18px rgba(16, 36, 62, .045);
-    }
-    .workflow-head { display: flex; justify-content: space-between; gap: 1rem; align-items: baseline; }
-    .workflow-head strong { color: var(--energy-ink); }
-    .workflow-head span { color: var(--energy-muted); font-size: .86rem; }
-    .workflow-steps { display: grid; grid-template-columns: repeat(5, 1fr); gap: .55rem; margin-top: .85rem; }
-    .workflow-step {
-        border-top: 4px solid #d8e0e8;
-        color: #788494;
-        padding: .52rem .2rem 0;
-        font-size: .78rem;
-        font-weight: 650;
-    }
-    .workflow-step.done { border-color: var(--energy-teal); color: #17696b; }
-    .workflow-step.active { border-color: var(--energy-gold); color: var(--energy-ink); }
-
     div[data-testid="stExpander"] {
         background: rgba(255,255,255,.92);
         border: 1px solid var(--energy-line);
@@ -212,19 +190,6 @@ def apply_interface_theme() -> None:
         .block-container { padding: .8rem .75rem 2.5rem; }
         .energy-hero { padding: 1.45rem 1.25rem; border-radius: 16px; }
         .energy-hero h1 { font-size: 2rem; }
-        .workflow-steps {
-            grid-template-columns: repeat(5, minmax(74px, 1fr));
-            gap: .35rem;
-            overflow-x: auto;
-            padding-bottom: .25rem;
-        }
-        .workflow-step {
-            border-top: 4px solid #d8e0e8;
-            border-left: 0;
-            padding: .42rem .1rem 0;
-            white-space: nowrap;
-        }
-        .workflow-head { display: block; }
     }
 </style>
         """,
@@ -398,47 +363,34 @@ def display_metric_table(case: str, table: pd.DataFrame) -> pd.DataFrame:
     return displayed
 
 
-def workflow_status(upload_ready: bool, input_mode: str) -> tuple[int, str]:
-    """Summarise the current five-step workflow without relying on colour."""
-    prepared = (
-        "prepared" in st.session_state
-        and st.session_state.get("prepared_input_mode") == input_mode
+def set_workflow_stage(stage: int) -> None:
+    """Move between the three user-facing workflow screens."""
+
+    st.session_state["workflow_stage"] = stage
+
+
+def show_workflow_navigation(stage: int, data_ready: bool, results_ready: bool) -> None:
+    """Render a compact, accessible three-screen workflow navigator."""
+
+    labels = (
+        "1  Data" + ("  ✓" if data_ready else ""),
+        "2  Models" + ("  ✓" if results_ready else ""),
+        "3  Results",
     )
-    active_results = []
-    if prepared:
-        active_case = st.session_state.get("active_case", "aemo")
-        active_results = list(st.session_state.get("results", {}).get(active_case, {}))
-    if active_results:
-        return 5, "Results ready: compare, explain and download"
-    if prepared:
-        return 3, "Sources prepared: select a case and run a model"
-    if upload_ready:
-        return 2, "Files selected: validate and prepare the sources"
-    return 1, "Upload a supported source dataset"
-
-
-def show_workflow_progress(upload_ready: bool, input_mode: str) -> None:
-    step, message = workflow_status(upload_ready, input_mode)
-    labels = ("Upload", "Validate", "Select", "Model", "Review")
-    rendered_steps = []
-    for index, label in enumerate(labels, start=1):
-        state_class = "done" if index < step else "active" if index == step else ""
-        rendered_steps.append(
-            f'<div class="workflow-step {state_class}">{index} · {label}</div>'
+    columns = st.columns(3, gap="small")
+    availability = (True, data_ready, results_ready)
+    for index, (column, label, available) in enumerate(
+        zip(columns, labels, availability), start=1
+    ):
+        column.button(
+            label,
+            key=f"workflow_nav_{index}",
+            type="primary" if stage == index else "secondary",
+            disabled=not available,
+            width="stretch",
+            on_click=set_workflow_stage,
+            args=(index,),
         )
-    step_markup = "".join(rendered_steps)
-    st.markdown(
-        f"""
-<div class="workflow-shell">
-  <div class="workflow-head">
-    <strong>Workflow progress</strong>
-    <span>Step {step} of 5 · {message}</span>
-  </div>
-  <div class="workflow-steps">{step_markup}</div>
-</div>
-        """,
-        unsafe_allow_html=True,
-    )
 
 
 def forecast_chart(case: str, frame: pd.DataFrame, model_name: str) -> alt.Chart:
@@ -627,280 +579,307 @@ with st.expander("Source files, forecasting rules and metric definitions"):
 - **MAPE:** positive-actual MAPE excludes zero PV targets. MAE and RMSE include every valid target.
 """)
 
+data_ready = "prepared" in st.session_state and bool(st.session_state["prepared"])
+if data_ready and st.session_state.get("active_case") not in st.session_state["prepared"]:
+    st.session_state["active_case"] = next(iter(st.session_state["prepared"]))
+active_case = st.session_state.get("active_case") if data_ready else None
+active_results = st.session_state.get("results", {}).get(active_case, {})
+results_ready = data_ready and all(name in active_results for name in MODEL_ORDER)
+
+stage = int(st.session_state.get("workflow_stage", 1))
+if not data_ready:
+    stage = 1
+elif stage == 3 and not results_ready:
+    stage = 2
+st.session_state["workflow_stage"] = stage
+
 show_section_heading(
-    "Get started",
-    "Choose a data source",
-    "Start instantly, upload your own data or reproduce the documented research benchmark.",
+    "Guided workflow",
+    ("Prepare data", "Run and compare models", "Review results")[stage - 1],
+    "Complete one focused screen at a time. Return to an earlier screen whenever you need to make a change.",
 )
-input_mode = st.segmented_control(
-    "Input method",
-    ("Try demo data", "Upload your CSV", "Official benchmark · Advanced"),
-    default="Try demo data",
-    label_visibility="collapsed",
-)
-mode_descriptions = {
-    "Try demo data": (
-        "No upload required. Explore the complete workflow with a clearly labelled "
-        "synthetic two-week household-energy time series."
-    ),
-    "Upload your CSV": (
-        "Map your timestamp, energy target and optional known numeric covariates. "
-        "The file is validated before model preparation."
-    ),
-    "Official benchmark · Advanced": (
-        "Reproduce the documented AEMO demand and Ausgrid solar-PV cases from the "
-        "original 12 monthly AEMO archives and one Ausgrid archive."
-    ),
-}
-st.info(mode_descriptions[input_mode])
+show_workflow_navigation(stage, data_ready, results_ready)
 
-source_step_titles = {
-    "Try demo data": "1. Prepare demonstration data",
-    "Upload your CSV": "1. Upload and map your CSV",
-    "Official benchmark · Advanced": "1. Upload official source archives",
-}
+if stage == 1:
+    show_section_heading(
+        "Step 1 of 3",
+        "Choose and prepare data",
+        "Start instantly, upload your own CSV or reproduce the documented research benchmark.",
+    )
+    if "input_mode" not in st.session_state:
+        st.session_state["input_mode"] = "Try demo data"
+    input_mode = st.segmented_control(
+        "Input method",
+        ("Try demo data", "Upload your CSV", "Official benchmark · Advanced"),
+        key="input_mode",
+        label_visibility="collapsed",
+    )
+    mode_descriptions = {
+        "Try demo data": (
+            "No upload required. Explore the workflow with a clearly labelled "
+            "synthetic two-week household-energy time series."
+        ),
+        "Upload your CSV": (
+            "Map your timestamp, energy target and optional known numeric covariates. "
+            "The file is validated before model preparation."
+        ),
+        "Official benchmark · Advanced": (
+            "Reproduce the documented AEMO demand and Ausgrid solar-PV cases from "
+            "12 monthly AEMO archives and one Ausgrid archive."
+        ),
+    }
+    st.info(mode_descriptions[input_mode])
 
-with st.expander(
-    source_step_titles[input_mode],
-    expanded="prepared" not in st.session_state,
-):
     aemo_files = None
     ausgrid_file = None
     custom_file = None
     custom_configuration = None
     demo_bytes = None
-    if input_mode == "Try demo data":
-        demo_bytes = build_synthetic_demo_csv()
-        st.markdown(
-            "**Synthetic demonstration dataset**  \n"
-            "14 days · half-hourly observations · household energy target · "
-            "temperature covariate · no personal or operational data"
-        )
-        preview = pd.read_csv(io.BytesIO(demo_bytes)).head(8)
-        st.dataframe(preview, hide_index=True, width="stretch")
-        upload_ready = True
-    elif input_mode == "Official benchmark · Advanced":
-        st.caption(
-            "This advanced path is only for reproducing the two official reference "
-            "cases. General users do not need these 13 source archives."
-        )
-        aemo_files = st.file_uploader(
-            "Upload 12 AEMO monthly ZIP archives",
-            type="zip",
-            accept_multiple_files=True,
-            help="Select the 12 consecutive monthly ACTUAL_DAILY archives together.",
-        )
-        ausgrid_file = st.file_uploader(
-            "Upload the Ausgrid solar-home ZIP archive",
-            type="zip",
-            help="Use the original documented archive; the data remain local.",
-        )
-        aemo_count = len(aemo_files) if aemo_files else 0
-        left, right = st.columns(2)
-        left.metric("AEMO archives selected", f"{aemo_count}/12")
-        right.metric("Ausgrid archive selected", "1/1" if ausgrid_file else "0/1")
-        if aemo_count and aemo_count != 12:
-            st.warning(f"Select exactly 12 AEMO monthly archives; currently {aemo_count} selected.")
-        upload_ready = bool(aemo_files and ausgrid_file)
-    else:
-        template_column, guidance_column = st.columns([1, 2])
-        template_column.download_button(
-            "Download valid sample CSV",
-            data=build_synthetic_demo_csv(),
-            file_name="valid_energy_forecast_sample.csv",
-            mime="text/csv",
-            width="stretch",
-        )
-        guidance_column.markdown(
-            "**Minimum structure:** one timestamp column, one non-negative energy "
-            "target and enough regular observations for chronological splitting."
-        )
-        custom_file = st.file_uploader(
-            "Upload an approved-schema energy CSV",
-            type="csv",
-            help="Maximum 20 MB, UTF-8, one header row and chronological observations.",
-        )
-        st.caption("The application validates a maximum custom CSV size of 20 MB.")
-        upload_ready = custom_file is not None
-        if custom_file is not None:
-            try:
-                custom_bytes = custom_file.getvalue()
-                inspection = inspect_custom_csv(custom_file.name, custom_bytes)
-                st.caption(f"{inspection.row_count:,} rows · {inspection.byte_size / 1024:.1f} KB")
-                timestamp_column = st.selectbox("Timestamp column", inspection.columns)
-                target_options = [column for column in inspection.columns if column != timestamp_column]
-                target_column = st.selectbox("Target column", target_options)
-                covariate_options = [
-                    column for column in inspection.columns
-                    if column not in {timestamp_column, target_column}
-                ]
-                covariates = st.multiselect(
-                    "Optional numeric covariates known at prediction time",
-                    covariate_options,
-                    help="Do not select measurements that would only be known after the forecast is made.",
-                )
-                inferred_period = infer_daily_seasonal_period(
-                    custom_file.name, custom_bytes, timestamp_column
-                )
-                seasonal_period = st.number_input(
-                    "Seasonal period in rows",
-                    min_value=2,
-                    value=inferred_period or 48,
-                    step=1,
-                    help="For half-hourly data, a daily season contains 48 rows.",
-                )
-                unit = st.text_input("Target unit", value="kWh")
-                custom_configuration = {
-                    "timestamp_column": timestamp_column,
-                    "target_column": target_column,
-                    "covariate_columns": covariates,
-                    "seasonal_period": int(seasonal_period),
-                    "unit": unit,
-                }
-                st.dataframe(
-                    pd.read_csv(custom_file).head(10), hide_index=True, width="stretch"
-                )
-            except (ValueError, pd.errors.ParserError) as error:
-                upload_ready = False
-                st.error(f"CSV inspection failed: {error}")
+    with st.container(border=True):
+        if input_mode == "Try demo data":
+            demo_bytes = build_synthetic_demo_csv()
+            st.markdown(
+                "**Synthetic demonstration dataset**  \n"
+                "14 days · half-hourly observations · household energy target · "
+                "temperature covariate · no personal or operational data"
+            )
+            st.dataframe(
+                pd.read_csv(io.BytesIO(demo_bytes)).head(8),
+                hide_index=True,
+                width="stretch",
+            )
+            upload_ready = True
+        elif input_mode == "Official benchmark · Advanced":
+            st.caption(
+                "This advanced path only reproduces the two official reference cases. "
+                "General users do not need these 13 archives."
+            )
+            aemo_files = st.file_uploader(
+                "Upload 12 AEMO monthly ZIP archives",
+                type="zip",
+                accept_multiple_files=True,
+                help="Select the 12 consecutive monthly ACTUAL_DAILY archives together.",
+            )
+            ausgrid_file = st.file_uploader(
+                "Upload the Ausgrid solar-home ZIP archive",
+                type="zip",
+                help="Use the original documented archive; the data remain local.",
+            )
+            aemo_count = len(aemo_files) if aemo_files else 0
+            left, right = st.columns(2)
+            left.metric("AEMO archives", f"{aemo_count}/12")
+            right.metric("Ausgrid archive", "1/1" if ausgrid_file else "0/1")
+            if aemo_count and aemo_count != 12:
+                st.warning(f"Select exactly 12 AEMO archives; currently {aemo_count} selected.")
+            upload_ready = bool(aemo_files and ausgrid_file)
+        else:
+            template_column, guidance_column = st.columns([1, 2])
+            template_column.download_button(
+                "Download valid sample CSV",
+                data=build_synthetic_demo_csv(),
+                file_name="valid_energy_forecast_sample.csv",
+                mime="text/csv",
+                width="stretch",
+            )
+            guidance_column.markdown(
+                "**Minimum structure:** one timestamp column, one non-negative energy "
+                "target and enough regular observations for chronological splitting."
+            )
+            custom_file = st.file_uploader(
+                "Upload an approved-schema energy CSV",
+                type="csv",
+                help="Maximum 20 MB, UTF-8, one header row and chronological observations.",
+            )
+            st.caption("The application validates a maximum custom CSV size of 20 MB.")
+            upload_ready = custom_file is not None
+            if custom_file is not None:
+                try:
+                    custom_bytes = custom_file.getvalue()
+                    inspection = inspect_custom_csv(custom_file.name, custom_bytes)
+                    st.caption(f"{inspection.row_count:,} rows · {inspection.byte_size / 1024:.1f} KB")
+                    timestamp_column = st.selectbox("Timestamp column", inspection.columns)
+                    target_options = [column for column in inspection.columns if column != timestamp_column]
+                    target_column = st.selectbox("Target column", target_options)
+                    covariate_options = [
+                        column for column in inspection.columns
+                        if column not in {timestamp_column, target_column}
+                    ]
+                    covariates = st.multiselect(
+                        "Optional numeric covariates known at prediction time",
+                        covariate_options,
+                        help="Do not select measurements only known after prediction time.",
+                    )
+                    inferred_period = infer_daily_seasonal_period(
+                        custom_file.name, custom_bytes, timestamp_column
+                    )
+                    seasonal_period = st.number_input(
+                        "Seasonal period in rows",
+                        min_value=2,
+                        value=inferred_period or 48,
+                        step=1,
+                        help="For half-hourly data, a daily season contains 48 rows.",
+                    )
+                    unit = st.text_input("Target unit", value="kWh")
+                    custom_configuration = {
+                        "timestamp_column": timestamp_column,
+                        "target_column": target_column,
+                        "covariate_columns": covariates,
+                        "seasonal_period": int(seasonal_period),
+                        "unit": unit,
+                    }
+                    st.dataframe(
+                        pd.read_csv(custom_file).head(10), hide_index=True, width="stretch"
+                    )
+                except (ValueError, pd.errors.ParserError) as error:
+                    upload_ready = False
+                    st.error(f"CSV inspection failed: {error}")
 
-show_workflow_progress(upload_ready, input_mode)
-
-button_disabled = not upload_ready or (
-    input_mode == "Upload your CSV" and custom_configuration is None
-)
-if input_mode == "Try demo data":
-    action_label = "Prepare demo dataset"
-elif input_mode == "Upload your CSV":
-    action_label = "Validate and prepare CSV" if not button_disabled else "Upload a CSV to continue"
-else:
-    action_label = (
-        "Validate and prepare official sources"
-        if not button_disabled else "Select all 13 official archives to continue"
+    button_disabled = not upload_ready or (
+        input_mode == "Upload your CSV" and custom_configuration is None
     )
-
-if st.button(
-    action_label,
-    type="primary",
-    disabled=button_disabled,
-):
-    try:
-        with st.spinner("Validating schema, chronology and data quality…"):
-            if input_mode == "Official benchmark · Advanced":
-                evidence = validate_documented_sources(aemo_files, ausgrid_file)
-                prepared = prepare_uploaded_sources(aemo_files, ausgrid_file)
-            elif input_mode == "Try demo data":
-                demo_case, evidence = prepare_custom_csv(
-                    "synthetic_energy_demo.csv",
-                    demo_bytes,
-                    timestamp_column="timestamp",
-                    target_column="energy_kwh",
-                    covariate_columns=["temperature_c"],
-                    seasonal_period=48,
-                    unit="kWh / half-hour",
-                )
-                demo_case["label"] = "Synthetic household energy demo"
-                demo_case["profile"]["source_type"] = "synthetic demonstration data"
-                evidence["source_type"] = "synthetic demonstration data"
-                # Reuse the fully supported custom-data model path while keeping
-                # the demonstration label and provenance explicit in the UI.
-                prepared = {"custom": demo_case}
-            else:
-                custom_case, evidence = prepare_custom_csv(
-                    custom_file.name,
-                    custom_file.getvalue(),
-                    **custom_configuration,
-                )
-                prepared = {"custom": custom_case}
-            st.session_state["upload_evidence"] = evidence
-            st.session_state["prepared"] = prepared
-            st.session_state["prepared_input_mode"] = input_mode
-            st.session_state["results"] = {key: {} for key in prepared}
-            st.session_state["final_results"] = {}
-        st.success("Source data validated and forecasting cases are ready.")
-    except UploadRejected as rejection:
-        st.session_state.pop("prepared", None)
-        st.session_state.pop("upload_evidence", None)
-        st.session_state.pop("results", None)
-        st.error(f"Upload rejected ({rejection.code}): {rejection.message}")
-    except (ValueError, KeyError, OSError, TypeError) as error:
-        st.session_state.pop("prepared", None)
-        st.session_state.pop("upload_evidence", None)
-        st.session_state.pop("results", None)
-        st.error(f"Source validation failed: {error}")
-
-if (
-    "prepared" in st.session_state
-    and st.session_state.get("prepared_input_mode") == input_mode
-):
-    if st.session_state.get("active_case") not in st.session_state["prepared"]:
-        st.session_state["active_case"] = next(iter(st.session_state["prepared"]))
-    setup_column, model_column = st.columns([1, 1.15], gap="large")
-    with setup_column:
-        show_section_heading(
-            "Step 2",
-            "Select a forecasting case",
-            "Review the chronological split before training or comparing models.",
+    if input_mode == "Try demo data":
+        action_label = "Prepare demo and continue"
+    elif input_mode == "Upload your CSV":
+        action_label = "Validate CSV and continue" if not button_disabled else "Upload a CSV to continue"
+    else:
+        action_label = (
+            "Validate official sources and continue"
+            if not button_disabled else "Select all 13 official archives to continue"
         )
+
+    if st.button(action_label, type="primary", disabled=button_disabled, width="stretch"):
+        try:
+            with st.spinner("Validating schema, chronology and data quality…"):
+                if input_mode == "Official benchmark · Advanced":
+                    evidence = validate_documented_sources(aemo_files, ausgrid_file)
+                    prepared = prepare_uploaded_sources(aemo_files, ausgrid_file)
+                elif input_mode == "Try demo data":
+                    demo_case, evidence = prepare_custom_csv(
+                        "synthetic_energy_demo.csv",
+                        demo_bytes,
+                        timestamp_column="timestamp",
+                        target_column="energy_kwh",
+                        covariate_columns=["temperature_c"],
+                        seasonal_period=48,
+                        unit="kWh / half-hour",
+                    )
+                    demo_case["label"] = "Synthetic household energy demo"
+                    demo_case["profile"]["source_type"] = "synthetic demonstration data"
+                    evidence["source_type"] = "synthetic demonstration data"
+                    prepared = {"custom": demo_case}
+                else:
+                    custom_case, evidence = prepare_custom_csv(
+                        custom_file.name,
+                        custom_file.getvalue(),
+                        **custom_configuration,
+                    )
+                    prepared = {"custom": custom_case}
+                st.session_state["upload_evidence"] = evidence
+                st.session_state["prepared"] = prepared
+                st.session_state["prepared_input_mode"] = input_mode
+                st.session_state["active_case"] = next(iter(prepared))
+                st.session_state["results"] = {key: {} for key in prepared}
+                st.session_state["final_results"] = {}
+                st.session_state["workflow_stage"] = 2
+                st.session_state["data_ready_notice"] = True
+            st.rerun()
+        except UploadRejected as rejection:
+            st.session_state.pop("prepared", None)
+            st.session_state.pop("prepared_input_mode", None)
+            st.session_state.pop("upload_evidence", None)
+            st.session_state.pop("results", None)
+            st.session_state.pop("final_results", None)
+            st.session_state["workflow_stage"] = 1
+            st.error(f"Upload rejected ({rejection.code}): {rejection.message}")
+        except (ValueError, KeyError, OSError, TypeError) as error:
+            st.session_state.pop("prepared", None)
+            st.session_state.pop("prepared_input_mode", None)
+            st.session_state.pop("upload_evidence", None)
+            st.session_state.pop("results", None)
+            st.session_state.pop("final_results", None)
+            st.session_state["workflow_stage"] = 1
+            st.error(f"Source validation failed: {error}")
+
+elif stage == 2:
+    prepared = st.session_state["prepared"]
+    if st.session_state.pop("data_ready_notice", False):
+        st.success("Data validated. Choose a case if needed, then run both models.")
+    show_section_heading(
+        "Step 2 of 3",
+        "Run and compare models",
+        "Both models use the same chronological validation evidence and transparent baselines.",
+    )
+    if len(prepared) > 1:
         case = st.selectbox(
-            "Dataset",
-            list(st.session_state["prepared"]),
+            "Forecasting case",
+            list(prepared),
             format_func=case_label,
             key="active_case",
         )
-        case_data = st.session_state["prepared"][case]
-        parts = case_data["parts"]
-        st.write(
-            f"**Unit:** {unit_for(case)}  ·  **Train:** {len(parts['train']):,}  ·  "
-            f"**Validation:** {len(parts['validation']):,}  ·  "
-            f"**Reserved test:** {len(parts['test']):,} targets"
-        )
-        with st.expander("View source profile"):
-            st.json(case_data["profile"])
+    else:
+        case = next(iter(prepared))
+        st.session_state["active_case"] = case
+        st.markdown(f"#### {case_label(case)}")
+    case_data = prepared[case]
+    parts = case_data["parts"]
+    st.caption(
+        f"{unit_for(case)} · Train {len(parts['train']):,} · "
+        f"Validation {len(parts['validation']):,} · Reserved test {len(parts['test']):,}"
+    )
+    with st.expander("View data profile"):
+        st.json(case_data["profile"])
 
     results = st.session_state["results"][case]
     final_locked = case in st.session_state.get("final_results", {})
-    with model_column:
-        show_section_heading(
-            "Step 3",
-            "Run validation models",
-            "Train XGBoost and LSTM on the same evidence and compare them with transparent baselines.",
-        )
-        completion_notice = st.session_state.pop("completion_notice", None)
-        if completion_notice and completion_notice["case"] == case:
-            st.success(
-                f"{completion_notice['model']} completed. Results are available below."
-            )
-        model_error = st.session_state.pop("model_error", None)
-        if model_error and model_error["case"] == case:
-            st.error(f"{model_error['model']} failed: {model_error['message']}")
-        xgb_column, lstm_column = st.columns(2)
-        xgb_label = "Re-run XGBoost" if "XGBoost" in results else "Run XGBoost"
-        lstm_label = "Re-run LSTM" if "LSTM" in results else "Run LSTM"
-        xgb_column.button(
-            xgb_label,
-            key=f"xgb_{case}",
-            width="stretch",
-            on_click=run_validation_model,
-            args=(case, "XGBoost"),
-            disabled=final_locked,
-        )
-        lstm_column.button(
-            lstm_label,
-            key=f"lstm_{case}",
-            width="stretch",
-            on_click=run_validation_model,
-            args=(case, "LSTM"),
-            disabled=final_locked,
-        )
-        completed = [name for name in MODEL_ORDER if name in results]
-        if completed:
-            st.caption("Completed models: " + ", ".join(completed))
-        else:
-            st.caption("No trained model yet. Baseline results are already available.")
-        if final_locked:
-            st.caption("Model settings are locked because the reserved test has been evaluated.")
+    completion_notice = st.session_state.pop("completion_notice", None)
+    if completion_notice and completion_notice["case"] == case:
+        st.success(f"{completion_notice['model']} completed successfully.")
+    model_error = st.session_state.pop("model_error", None)
+    if model_error and model_error["case"] == case:
+        st.error(f"{model_error['model']} failed: {model_error['message']}")
 
+    model_columns = st.columns(2, gap="large")
+    model_copy = {
+        "XGBoost": "Gradient-boosted trees with SHAP feature contributions.",
+        "LSTM": "Sequence model trained on recent demand or generation history.",
+    }
+    for column, model_name in zip(model_columns, MODEL_ORDER):
+        with column.container(border=True):
+            st.markdown(f"### {model_name}")
+            st.caption(model_copy[model_name])
+            if model_name in results:
+                metrics = results[model_name]["validation_metrics"]
+                metric_left, metric_right = st.columns(2)
+                metric_left.metric("MAE", f"{metrics['MAE']:.{metric_decimals_for(case)}f}")
+                metric_right.metric("RMSE", f"{metrics['RMSE']:.{metric_decimals_for(case)}f}")
+                st.success("Validation complete")
+            else:
+                st.info("Ready to run")
+            st.button(
+                f"{'Re-run' if model_name in results else 'Run'} {model_name}",
+                key=f"model_card_{model_name}_{case}",
+                width="stretch",
+                on_click=run_validation_model,
+                args=(case, model_name),
+                disabled=final_locked,
+            )
+    completed = [name for name in MODEL_ORDER if name in results]
+    if final_locked:
+        st.caption("Model settings are locked because the reserved test has been evaluated.")
+    st.button(
+        "View comparison and results",
+        type="primary",
+        width="stretch",
+        disabled=not all(name in completed for name in MODEL_ORDER),
+        on_click=set_workflow_stage,
+        args=(3,),
+    )
+
+else:
+    case = st.session_state["active_case"]
+    case_data = st.session_state["prepared"][case]
+    parts = case_data["parts"]
+    results = st.session_state["results"][case]
     comparison = metric_table(case_data, results)
     completed_final = st.session_state.get("final_results", {}).get(case, {})
     summary = {
@@ -937,9 +916,9 @@ if (
     )
 
     show_section_heading(
-        "Steps 4–5",
-        "Review, explain and export",
-        "Compare model quality, inspect forecast behaviour and download reproducible evidence.",
+        "Step 3 of 3",
+        f"Results · {case_label(case)}",
+        "Compare quality, inspect forecast behaviour and export reproducible evidence.",
     )
     overview_tab, forecast_tab, explain_tab, final_tab, downloads_tab = st.tabs([
         "Overview", "Forecasts", "Explainability (XGBoost)", "Final test", "Downloads"
